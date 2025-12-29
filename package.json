@@ -1,0 +1,61 @@
+{
+	"name": "@perdieminc/busytime",
+	"version": "0.0.1",
+	"description": "A library for managing busy times",
+	"keywords": [
+		"busytime",
+		"preptime",
+		"orders"
+	],
+	"license": "MIT",
+	"author": "Per Diem Subscriptions Inc.",
+	"homepage": "https://github.com/PerDiemInc/busytime#readme",
+	"bugs": {
+		"url": "https://github.com/PerDiemInc/busytime/issues"
+	},
+	"main": "lib/index.js",
+	"types": "lib/index.d.ts",
+	"engines": {
+		"node": ">=20"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/PerDiemInc/busytime.git"
+	},
+	"scripts": {
+		"lint": "biome lint .",
+		"format": "biome check --write .",
+		"clean": "rm -rf lib types coverage",
+		"build": "tsc -b .",
+		"build:watch": "tsc --watch",
+		"test": "mocha test/**/*.spec.ts",
+		"test:single": "mocha",
+		"test:coverage": "nyc mocha --check-coverage --skip-empty --skip-full",
+		"coveralls": "nyc report --reporter=lcov"
+	},
+	"peerDependencies": {
+		"ioredis": "^5.3.2"
+	},
+	"devDependencies": {
+		"@types/ioredis": "^4.28.10",
+		"@types/mocha": "^10.0.10",
+		"@types/node": "^20.19.27",
+		"chai": "^6.2.2",
+		"husky": "^9.1.7",
+		"ioredis": "^5.3.2",
+		"ioredis-mock": "^8.13.1",
+		"lint-staged": "^16.2.7",
+		"mocha": "^11.7.5",
+		"nyc": "^17.1.0",
+		"ts-node": "^10.9.2",
+		"tsx": "^4.21.0",
+		"typescript": "^5.9.3"
+	},
+	"files": [
+		"lib"
+	],
+	"directories": {
+		"lib": "lib",
+		"test": "test"
+	}
+}
