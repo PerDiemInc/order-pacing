@@ -1,98 +1,128 @@
-# PrepTime Engine
-
-A TypeScript library for managing order prep times using Redis sorted sets.
+# BusyTime Engine
 
 ## Installation
 
 ```bash
-npm install preptime-engine
+npm install @perdieminc/busytime
 ```
 
 ## Usage
 
 ```typescript
 import Redis from 'ioredis';
-import { PrepTimeEngine, TIMEFRAME_CALCULATION_MODE } from 'preptime-engine';
+import { Engine, TIMEFRAME_MODE } from '@perdieminc/busytime';
 
 const redis = new Redis({
   host: 'localhost',
   port: 6379
 });
 
-const bucket = 'storeId:locationId';
-const engine = new PrepTimeEngine(bucket, redis);
+const engine = new Engine({
+  redis,
+  bucket: 'storeId:locationId',
+  timeframeMode: TIMEFRAME_MODE.BEFORE_ONLY
+});
 
-engine.setRule(30, 10, 100, 1000, 15);
+engine.setBusyTimeRule({
+  timeFrame: 30,
+  prepTime: 15,
+  maxOrders: 10,
+  maxItems: 100,
+  totalPrice: 1000
+});
 
-await engine.processOrderPrepTime(new Date(), 5, 50);
+await engine.validateOrder({
+  orderId: '123',
+  orderTime: new Date(),
+  itemsCount: 5,
+  totalPrice: 50
+});
 
-const preptimes = await engine.getPrepTimes();
+const busyTimes = await engine.getBusyTimes();
 const orders = await engine.getOrders();
 const validation = await engine.validateOrderTime(new Date());
 ```
 
 ## API
 
-### `new PrepTimeEngine(bucket, redis, timeframeMode?)`
+### `new Engine({ redis, bucket, timeframeMode?, logger? })`
 
-Creates a new PrepTimeEngine instance.
+Creates a new Engine instance.
 
-- `bucket`: Format `storeId:locationId`
 - `redis`: Redis instance from ioredis
-- `timeframeMode`: Optional timeframe calculation mode (`TIMEFRAME_CALCULATION_MODE.BEFORE_ONLY` or `TIMEFRAME_CALCULATION_MODE.CENTERED`)
+- `bucket`: Bucket identifier (e.g., `storeId:locationId`)
+- `timeframeMode`: Optional timeframe calculation mode. Options:
+  - `TIMEFRAME_MODE.BEFORE_ONLY` (default): Look back from order time
+  - `TIMEFRAME_MODE.CENTERED`: Look both before and after order time (centered window)
+  - `TIMEFRAME_MODE.AFTER_ONLY`: Look forward from order time
+  - `TIMEFRAME_MODE.BEFORE_AND_AFTER`: Look both before and after order time (full window)
+- `logger`: Optional logger instance (defaults to noop logger)
 
-### `setRule(timeFrame, maxOrders, maxItems, totalPrice, prepTime)`
+### `setBusyTimeRule(busyTimeRule)`
 
-Defines the rule for the bucket. Rule is based on `maxOrders`, `maxItems`, `totalPrice` in `timeFrame` to set the `prepTime`.
+Defines the busy time rule for the bucket. The rule determines when to apply busy time based on order volume in a time window.
 
-### `processOrderPrepTime(orderTime, itemsCount, totalPrice)`
+```typescript
+engine.setBusyTimeRule({
+  timeFrame: 30,      // Time window in minutes
+  prepTime: 15,       // Busy time to apply in minutes
+  maxOrders: 10,      // Optional: Max orders threshold
+  maxItems: 100,      // Optional: Max items threshold
+  totalPrice: 1000    // Optional: Max total price threshold
+});
+```
 
-Processes the order and sets the prepTime based on the defined rules.
+At least one threshold (`maxOrders`, `maxItems`, or `totalPrice`) must be set. When any threshold is exceeded within the time window, the busy time is applied.
 
-### `getPrepTimes()`
+### `validateOrder(order)`
 
-Returns prep times in the following format:
+Validates and processes an order. If thresholds are exceeded, a busy time period is created.
 
-```json
-{
-  "preptimes": [
-    {
-      "startTime": "2025-01-01 12:00:00",
-      "endTime": "2025-01-01 12:15:00",
-      "prepTime": 15
-    }
-  ]
-}
+```typescript
+await engine.validateOrder({
+  orderId: '123',
+  orderTime: new Date(),
+  itemsCount: 5,
+  totalPrice: 50.00
+});
+```
+
+### `getBusyTimes()`
+
+Returns an array of busy time entries:
+
+```typescript
+[
+  {
+    startTime: Date,     // Start of busy period
+    endTime: Date,       // End of busy period
+    busyTime: 15         // Duration in minutes
+  }
+]
 ```
 
 ### `getOrders()`
 
-Returns orders in the following format:
+Returns an array of order entries:
 
-```json
-{
-  "orders": [
-    {
-      "orderTime": "2025-01-01 12:00:00",
-      "itemsCount": 10,
-      "totalPrice": 100
-    }
-  ]
-}
+```typescript
+[
+  {
+    orderId: '123',
+    orderTime: Date,
+    itemsCount: 10,
+    totalPrice: 100
+  }
+]
 ```
 
 ### `validateOrderTime(orderTime)`
 
-Validates if an order can be placed at the given time. Returns:
+Checks if an order placed at the given time would fall within a busy period. Returns wait period information:
 
-```json
+```typescript
 {
-  "orderInTime": 7,
-  "ordersInWindow": 10
+  waitPeriodSeconds: 420,  // Seconds to wait until busy period ends (0 if not busy)
+  ordersInWindow: 0        // Currently unused
 }
 ```
-
-## License
-
-MIT
-
