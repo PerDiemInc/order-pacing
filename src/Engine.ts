@@ -13,6 +13,15 @@ export const TIMEFRAME_MODE = {
 export type TimeframeCalculationMode =
 	(typeof TIMEFRAME_MODE)[keyof typeof TIMEFRAME_MODE];
 
+export const ORDER_SOURCE = {
+	PERDIEM: "perdiem",
+	OTHER: "other",
+} as const;
+
+export type OrderSource = (typeof ORDER_SOURCE)[keyof typeof ORDER_SOURCE];
+
+export const ORDERS_RETENTION_SECONDS = 604800; // 7 days in seconds
+
 export interface BusyTimeRule {
 	timeFrame: number;
 	prepTime: number;
@@ -24,15 +33,16 @@ export interface BusyTimeRule {
 export interface Order {
 	orderId: string;
 	orderTime: Date;
-	itemsCount: number;
-	totalPrice: number;
+	itemsCount?: number;
+	totalPrice?: number;
+	source?: OrderSource;
 }
 
 export interface OrderEntry {
 	orderId: string;
 	orderTime: Date;
-	itemsCount: number;
-	totalPrice: number;
+	itemsCount?: number;
+	totalPrice?: number;
 }
 
 export interface BusyTimeEntry {
@@ -45,8 +55,9 @@ export interface OrderData {
 	orderId: string;
 	orderTime: Date;
 	currentTimeSeconds: number;
-	itemsCount: number;
-	totalPrice: number;
+	itemsCount?: number;
+	totalPrice?: number;
+	source?: OrderSource;
 }
 
 export interface BusyTimeData {
@@ -58,8 +69,8 @@ export interface BusyTimeData {
 export interface RedisOrderValue {
 	orderId: string;
 	currentTimeSeconds: number;
-	itemsCount: number;
-	totalPrice: number;
+	itemsCount?: number;
+	totalPrice?: number;
 }
 
 export interface RedisBusyTimeValue {
@@ -220,7 +231,7 @@ export class Engine {
 
 		const ordersInWindow = await this.getOrdersInWindow(timeWindow);
 
-		if (this.shouldApplyBusyTime(ordersInWindow, order)) {
+		if (this.shouldApplyBusyTime(ordersInWindow)) {
 			const busyTimeData: BusyTimeData = {
 				orderTimeSeconds,
 				currentTimeSeconds,
@@ -281,18 +292,15 @@ export class Engine {
 		for (let i = 0; i < entries.length; i += 2) {
 			const value = entries[i] as string;
 			const score = parseInt(entries[i + 1] as string, 10);
-
-			const [, prepTimeStr] = value.split(":");
-			const prepTime = parseInt(prepTimeStr, 10);
-			const orderTime = scoreToDate(score);
-
-			const startTime = scoreToDate(score - minutesToSeconds(prepTime));
-			const endTime = orderTime;
+			const { startTime, endTime, busyTime } = this.parseBusyTimeValue(
+				value,
+				score,
+			);
 
 			busyTimes.push({
 				startTime,
 				endTime,
-				busyTime: prepTime,
+				busyTime,
 			});
 		}
 
@@ -318,32 +326,110 @@ export class Engine {
 		for (let i = 0; i < entries.length; i += 2) {
 			const value = entries[i] as string;
 			const score = parseInt(entries[i + 1] as string, 10);
-
-			const [orderId, , itemsCountStr, totalPriceStr] = value.split(":");
+			const { orderId, orderTime, itemsCount, totalPrice } =
+				this.parseOrderValue(value, score);
 
 			orders.push({
 				orderId,
-				orderTime: scoreToDate(score),
-				itemsCount: parseInt(itemsCountStr, 10),
-				totalPrice: parseFloat(totalPriceStr),
+				orderTime,
+				itemsCount,
+				totalPrice,
 			});
 		}
 
 		return orders;
 	}
 
-	private getOrderValue(orderData: OrderData): string {
-		const { orderId, currentTimeSeconds, itemsCount, totalPrice } = orderData;
+	public async getOrdersStats(
+		startTime: Date,
+		endTime: Date,
+	): Promise<{ orderId: string; orderTime: Date; source: OrderSource }[]> {
+		const startTimeSeconds = toSeconds(startTime);
+		const endTimeSeconds = toSeconds(endTime);
+		const currentTimeSeconds = toSeconds(Date.now());
 
-		return `${orderId}:${currentTimeSeconds}:${itemsCount}:${totalPrice}`;
+		await this.cleanOldOrders(currentTimeSeconds);
+
+		const entries = await this.redis.zrangebyscore(
+			this.ordersKey,
+			startTimeSeconds,
+			endTimeSeconds,
+			"WITHSCORES",
+		);
+
+		const allOrders: {
+			orderId: string;
+			orderTime: Date;
+			source: OrderSource;
+		}[] = [];
+
+		for (let i = 0; i < entries.length; i += 2) {
+			const value = entries[i] as string;
+			const score = parseInt(entries[i + 1] as string, 10);
+			const { orderId, orderTime, source } = this.parseOrderValue(value, score);
+
+			allOrders.push({ orderId, orderTime, source });
+		}
+
+		return allOrders.sort(
+			(a, b) => toSeconds(a.orderTime) - toSeconds(b.orderTime),
+		);
+	}
+
+	private getOrderValue(orderData: OrderData): string {
+		const { orderId, currentTimeSeconds, itemsCount, totalPrice, source } =
+			orderData;
+
+		return `${orderId}:${currentTimeSeconds}:${itemsCount ?? 0}:${totalPrice ?? 0}:${source || ORDER_SOURCE.PERDIEM}`;
 	}
 
 	private getBusyTimeValue(busyTimeData: BusyTimeData): string {
 		return `${busyTimeData.currentTimeSeconds}:${busyTimeData.prepTime}`;
 	}
 
+	private parseOrderValue(value: string, score: number) {
+		const [
+			orderId,
+			currentTimeSecondsStr,
+			itemsCountStr,
+			totalPriceStr,
+			source,
+		] = value.split(":");
+
+		const itemsCount = parseInt(itemsCountStr, 10);
+		const totalPrice = parseFloat(totalPriceStr);
+
+		return {
+			orderId,
+			orderTime: scoreToDate(score),
+			currentTimeSeconds: parseInt(currentTimeSecondsStr, 10),
+			itemsCount: Number.isNaN(itemsCount) ? undefined : itemsCount,
+			totalPrice: Number.isNaN(totalPrice) ? undefined : totalPrice,
+			source: (source || ORDER_SOURCE.PERDIEM) as OrderSource,
+		};
+	}
+
+	private parseBusyTimeValue(value: string, score: number): BusyTimeEntry {
+		const [, prepTimeStr] = value.split(":");
+		const prepTime = parseInt(prepTimeStr, 10);
+		const orderTime = scoreToDate(score);
+
+		const startTime = scoreToDate(score - minutesToSeconds(prepTime));
+		const endTime = orderTime;
+
+		return {
+			startTime,
+			endTime,
+			busyTime: prepTime,
+		};
+	}
+
 	private async cleanOldOrders(currentTimeSeconds: number): Promise<void> {
-		await this.redis.zremrangebyscore(this.ordersKey, 0, currentTimeSeconds);
+		await this.redis.zremrangebyscore(
+			this.ordersKey,
+			0,
+			currentTimeSeconds - ORDERS_RETENTION_SECONDS,
+		);
 	}
 
 	private async cleanOldBusyTimes(currentTimeSeconds: number): Promise<void> {
@@ -415,39 +501,39 @@ export class Engine {
 
 		for (let i = 0; i < entries.length; i += 2) {
 			const value = entries[i] as string;
-			const [orderId, currentTimeSecondsStr, itemsCountStr, totalPriceStr] =
-				value.split(":");
+			const score = parseInt(entries[i + 1] as string, 10);
+			const { orderId, currentTimeSeconds, itemsCount, totalPrice } =
+				this.parseOrderValue(value, score);
 
 			orders.push({
 				orderId,
-				currentTimeSeconds: parseInt(currentTimeSecondsStr, 10),
-				itemsCount: parseInt(itemsCountStr, 10),
-				totalPrice: parseFloat(totalPriceStr),
+				currentTimeSeconds,
+				itemsCount,
+				totalPrice,
 			});
 		}
 
 		return orders;
 	}
 
-	private shouldApplyBusyTime(
-		ordersInWindow: RedisOrderValue[],
-		order: Order,
-	): boolean {
-		const totalItems =
-			ordersInWindow.reduce((sum, o) => sum + o.itemsCount, 0) +
-			order.itemsCount;
-		const totalPriceSum =
-			ordersInWindow.reduce((sum, o) => sum + o.totalPrice, 0) +
-			order.totalPrice;
-		const totalOrders = ordersInWindow.length + 1;
+	private shouldApplyBusyTime(ordersInWindow: RedisOrderValue[]): boolean {
+		const totalOrders = ordersInWindow.length;
+		const totalItems = ordersInWindow.reduce(
+			(sum, o) => sum + (o.itemsCount ?? 0),
+			0,
+		);
+		const totalPriceSum = ordersInWindow.reduce(
+			(sum, o) => sum + (o.totalPrice ?? 0),
+			0,
+		);
 
 		return (
 			(this.busyTimeRule.maxOrders != null &&
-				totalOrders > this.busyTimeRule.maxOrders) ||
+				totalOrders >= this.busyTimeRule.maxOrders) ||
 			(this.busyTimeRule.maxItems != null &&
-				totalItems > this.busyTimeRule.maxItems) ||
+				totalItems >= this.busyTimeRule.maxItems) ||
 			(this.busyTimeRule.totalPrice != null &&
-				totalPriceSum > this.busyTimeRule.totalPrice)
+				totalPriceSum >= this.busyTimeRule.totalPrice)
 		);
 	}
 }
