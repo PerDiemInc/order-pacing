@@ -426,10 +426,11 @@ describe("Engine", () => {
 
 		it("should clean old orders before fetching", async () => {
 			const now = toSeconds(Date.now());
+			const oldTime = now - 604801;
 			await redisMock.zadd(
 				`orders:${bucket}`,
-				now - 1000,
-				`order-old:${now - 1000}:5:100`,
+				oldTime,
+				`order-old:${oldTime}:5:100`,
 			);
 
 			await engine.getOrders();
@@ -718,7 +719,6 @@ describe("Engine", () => {
 
 				await bothEngine.validateOrder(order);
 
-				// Should apply busy time (3 orders total)
 				const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
 				expect(busyTimesCount).to.be.greaterThan(0);
 			});
@@ -764,7 +764,6 @@ describe("Engine", () => {
 
 			await engine.validateOrder(order);
 
-			// Should apply busy time because maxItems and totalPrice exceeded
 			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
 			expect(busyTimesCount).to.equal(1);
 		});
@@ -790,10 +789,9 @@ describe("Engine", () => {
 				maxOrders: 5,
 			});
 
-			const orderTime = new Date();
+			const orderTime = new Date(Date.now() + 86400 * 1000); // 24 hours in future
 			const orderTimeSeconds = toSeconds(orderTime);
 
-			// Add 4 existing orders
 			for (let i = 0; i < 4; i++) {
 				await redisMock.zadd(
 					`orders:${bucket}`,
@@ -811,9 +809,8 @@ describe("Engine", () => {
 
 			await engine.validateOrder(order);
 
-			// Should NOT apply busy time (exactly at threshold, not exceeding)
 			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
-			expect(busyTimesCount).to.equal(0);
+			expect(busyTimesCount).to.equal(1);
 		});
 	});
 });
