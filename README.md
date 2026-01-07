@@ -41,6 +41,10 @@ await engine.validateOrder({
 const busyTimes = await engine.getBusyTimes();
 const orders = await engine.getOrders();
 const validation = await engine.validateOrderTime(new Date());
+const stats = await engine.getOrdersStats(
+  new Date(Date.now() - 24 * 60 * 60 * 1000),
+  new Date(Date.now() + 24 * 60 * 60 * 1000)
+);
 ```
 
 ## API
@@ -125,4 +129,27 @@ Checks if an order placed at the given time would fall within a busy period. Ret
   waitPeriodSeconds: 420,  // Seconds to wait until busy period ends (0 if not busy)
   ordersInWindow: 0        // Currently unused
 }
+```
+
+### `getOrdersStats(startTime, endTime)`
+
+Retrieves order statistics for a specific time range. Returns an array of orders sorted by order time:
+
+```typescript
+[
+  {
+    orderId: '123',
+    orderTime: Date,
+    source: 'perdiem'  // Order source: 'perdiem' (ORDER_SOURCE.PERDIEM) or 'other' (ORDER_SOURCE.OTHER)
+  }
+]
+```
+
+Example:
+
+```typescript
+const stats = await engine.getOrdersStats(
+  new Date(Date.now() - 24 * 60 * 60 * 1000),
+  new Date(Date.now() + 24 * 60 * 60 * 1000)
+);
 ```
