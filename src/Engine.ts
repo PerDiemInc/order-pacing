@@ -127,15 +127,17 @@ export class Engine {
 	private readonly busyTimesKey: string;
 
 	/**
-	 * Default busy time rule
+	 * Busy time rules (supports multiple rules with overlapping)
 	 */
-	private busyTimeRule: BusyTimeRule = {
-		timeFrame: 15,
-		prepTime: 15,
-		maxOrders: 10,
-		maxItems: 10,
-		totalPrice: undefined,
-	};
+	private busyTimeRules: BusyTimeRule[] = [
+		{
+			timeFrame: 15,
+			prepTime: 15,
+			maxOrders: 10,
+			maxItems: 10,
+			totalPrice: undefined,
+		},
+	];
 
 	constructor({
 		redis,
@@ -151,7 +153,7 @@ export class Engine {
 		this.busyTimesKey = `busytimes:${this.bucket}`;
 	}
 
-	public setBusyTimeRule(busyTimeRule: BusyTimeRule): void {
+	private validateBusyTimeRule(busyTimeRule: BusyTimeRule): void {
 		if (!busyTimeRule) {
 			throw new Error("Busy time rule cannot be null or undefined");
 		}
@@ -206,13 +208,23 @@ export class Engine {
 				"At least one threshold must be set (maxOrders, maxItems, or totalPrice)",
 			);
 		}
+	}
 
-		this.busyTimeRule = busyTimeRule;
+	public setBusyTimeRules(busyTimeRules: BusyTimeRule[]): void {
+		if (!busyTimeRules || busyTimeRules.length === 0) {
+			throw new Error("At least one busy time rule must be provided");
+		}
+
+		for (const rule of busyTimeRules) {
+			this.validateBusyTimeRule(rule);
+		}
+
+		this.busyTimeRules = busyTimeRules;
 	}
 
 	public async validateOrder(order: Order): Promise<void> {
-		if (!this.busyTimeRule) {
-			this.logger.warn("Busy time rule not set, using defaults");
+		if (!this.busyTimeRules || this.busyTimeRules.length === 0) {
+			this.logger.warn("No busy time rules set, using defaults");
 		}
 
 		const orderTimeSeconds = toSeconds(order.orderTime);
@@ -224,21 +236,23 @@ export class Engine {
 		const orderData: OrderData = { ...order, currentTimeSeconds };
 		await this.addOrder(orderData);
 
-		const timeWindow = this.calculateTimeWindow({
-			orderTimeSeconds,
-			timeFrameSeconds: minutesToSeconds(this.busyTimeRule.timeFrame),
-		});
-
-		const ordersInWindow = await this.getOrdersInWindow(timeWindow);
-
-		if (this.shouldApplyBusyTime(ordersInWindow)) {
-			const busyTimeData: BusyTimeData = {
+		for (const rule of this.busyTimeRules) {
+			const timeWindow = this.calculateTimeWindow({
 				orderTimeSeconds,
-				currentTimeSeconds,
-				prepTime: this.busyTimeRule.prepTime,
-			};
+				timeFrameSeconds: minutesToSeconds(rule.timeFrame),
+			});
 
-			await this.addBusyTime(busyTimeData);
+			const ordersInWindow = await this.getOrdersInWindow(timeWindow);
+
+			if (this.shouldApplyBusyTime(ordersInWindow, rule)) {
+				const busyTimeData: BusyTimeData = {
+					orderTimeSeconds,
+					currentTimeSeconds,
+					prepTime: rule.prepTime,
+				};
+
+				await this.addBusyTime(busyTimeData);
+			}
 		}
 	}
 
@@ -516,7 +530,10 @@ export class Engine {
 		return orders;
 	}
 
-	private shouldApplyBusyTime(ordersInWindow: RedisOrderValue[]): boolean {
+	private shouldApplyBusyTime(
+		ordersInWindow: RedisOrderValue[],
+		rule: BusyTimeRule,
+	): boolean {
 		const totalOrders = ordersInWindow.length;
 		const totalItems = ordersInWindow.reduce(
 			(sum, o) => sum + (o.itemsCount ?? 0),
@@ -528,12 +545,9 @@ export class Engine {
 		);
 
 		return (
-			(this.busyTimeRule.maxOrders != null &&
-				totalOrders >= this.busyTimeRule.maxOrders) ||
-			(this.busyTimeRule.maxItems != null &&
-				totalItems >= this.busyTimeRule.maxItems) ||
-			(this.busyTimeRule.totalPrice != null &&
-				totalPriceSum >= this.busyTimeRule.totalPrice)
+			(rule.maxOrders != null && totalOrders >= rule.maxOrders) ||
+			(rule.maxItems != null && totalItems >= rule.maxItems) ||
+			(rule.totalPrice != null && totalPriceSum >= rule.totalPrice)
 		);
 	}
 }
