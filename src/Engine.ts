@@ -1,7 +1,17 @@
+import { getDay, getHours, getMinutes } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 import type Redis from "ioredis";
+import { pack, unpack } from "msgpackr";
 import type { Logger } from "./logger";
 import { noopLogger } from "./logger";
-import { minutesToSeconds, scoreToDate, toSeconds } from "./utils";
+import { defaultRuleSet } from "./rules";
+import type { Rule } from "./rules/types";
+import {
+	minutesToSeconds,
+	scoreToDate,
+	timeStringToMinutes,
+	toSeconds,
+} from "./utils";
 
 export const TIMEFRAME_MODE = {
 	CENTERED: "centered",
@@ -22,20 +32,22 @@ export type OrderSource = (typeof ORDER_SOURCE)[keyof typeof ORDER_SOURCE];
 
 export const ORDERS_RETENTION_SECONDS = 604800; // 7 days in seconds
 
-export interface BusyTimeRule {
-	timeFrame: number;
-	prepTime: number;
-	maxOrders?: number;
-	maxItems?: number;
-	totalPrice?: number;
+export interface OrderItem {
+	itemId: string;
+	categoryId: string;
+	quantity: number;
+	price: number;
 }
 
-export interface Order {
+export interface BaseOrder {
 	orderId: string;
+	items: OrderItem[];
+	source: OrderSource;
+}
+
+export interface Order extends BaseOrder {
 	orderTime: Date;
-	itemsCount?: number;
-	totalPrice?: number;
-	source?: OrderSource;
+	totalAmountCents: number;
 }
 
 export interface OrderEntry {
@@ -51,13 +63,10 @@ export interface BusyTimeEntry {
 	busyTime: number;
 }
 
-export interface OrderData {
-	orderId: string;
+export interface OrderData extends BaseOrder {
 	orderTime: Date;
 	currentTimeSeconds: number;
-	itemsCount?: number;
-	totalPrice?: number;
-	source?: OrderSource;
+	totalAmountCents: number;
 }
 
 export interface BusyTimeData {
@@ -66,11 +75,17 @@ export interface BusyTimeData {
 	prepTime: number;
 }
 
+export interface RedisOrder extends BaseOrder {
+	currentTimeSeconds: number;
+	totalPrice: number;
+}
+
 export interface RedisOrderValue {
 	orderId: string;
 	currentTimeSeconds: number;
 	itemsCount?: number;
 	totalPrice?: number;
+	categoryIds?: string[];
 }
 
 export interface RedisBusyTimeValue {
@@ -93,6 +108,7 @@ export interface EngineParams {
 	logger?: Logger;
 	bucket: string;
 	timeframeMode?: TimeframeCalculationMode;
+	timeZone?: string;
 }
 
 export class Engine {
@@ -117,6 +133,11 @@ export class Engine {
 	private readonly timeframeMode: TimeframeCalculationMode;
 
 	/**
+	 * Timezone
+	 */
+	private readonly timeZone: string;
+
+	/**
 	 * Redis key for orders
 	 */
 	private readonly ordersKey: string;
@@ -129,101 +150,38 @@ export class Engine {
 	/**
 	 * Busy time rules (supports multiple rules with overlapping)
 	 */
-	private busyTimeRules: BusyTimeRule[] = [
-		{
-			timeFrame: 15,
-			prepTime: 15,
-			maxOrders: 10,
-			maxItems: 10,
-			totalPrice: undefined,
-		},
-	];
+	private rules: Rule[] = [];
 
 	constructor({
 		redis,
 		logger = noopLogger,
 		bucket,
 		timeframeMode = TIMEFRAME_MODE.BEFORE_ONLY,
+		timeZone = "UTC",
 	}: EngineParams) {
 		this.redis = redis;
 		this.logger = logger;
 		this.bucket = bucket;
 		this.timeframeMode = timeframeMode;
+		this.timeZone = timeZone;
 		this.ordersKey = `orders:${this.bucket}`;
 		this.busyTimesKey = `busytimes:${this.bucket}`;
 	}
 
-	private validateBusyTimeRule(busyTimeRule: BusyTimeRule): void {
-		if (!busyTimeRule) {
-			throw new Error("Busy time rule cannot be null or undefined");
-		}
-
-		if (
-			typeof busyTimeRule.timeFrame !== "number" ||
-			busyTimeRule.timeFrame <= 0
-		) {
-			throw new Error(
-				"timeFrame must be a positive number greater than 0 (in minutes)",
-			);
-		}
-
-		if (
-			typeof busyTimeRule.prepTime !== "number" ||
-			busyTimeRule.prepTime <= 0
-		) {
-			throw new Error(
-				"prepTime must be a positive number greater than 0 (in minutes)",
-			);
-		}
-
-		if (
-			busyTimeRule.maxOrders !== undefined &&
-			(typeof busyTimeRule.maxOrders !== "number" ||
-				busyTimeRule.maxOrders <= 0)
-		) {
-			throw new Error("maxOrders must be a positive number greater than 0");
-		}
-
-		if (
-			busyTimeRule.maxItems !== undefined &&
-			(typeof busyTimeRule.maxItems !== "number" || busyTimeRule.maxItems <= 0)
-		) {
-			throw new Error("maxItems must be a positive number greater than 0");
-		}
-
-		if (
-			busyTimeRule.totalPrice !== undefined &&
-			(typeof busyTimeRule.totalPrice !== "number" ||
-				busyTimeRule.totalPrice <= 0)
-		) {
-			throw new Error("totalPrice must be a positive number greater than 0");
-		}
-
-		if (
-			busyTimeRule.maxOrders === undefined &&
-			busyTimeRule.maxItems === undefined &&
-			busyTimeRule.totalPrice === undefined
-		) {
-			throw new Error(
-				"At least one threshold must be set (maxOrders, maxItems, or totalPrice)",
-			);
-		}
-	}
-
-	public setBusyTimeRules(busyTimeRules: BusyTimeRule[]): void {
-		if (!busyTimeRules || busyTimeRules.length === 0) {
+	public setRules(rules: Rule[]): void {
+		if (!rules || rules.length === 0) {
 			throw new Error("At least one busy time rule must be provided");
 		}
 
-		for (const rule of busyTimeRules) {
-			this.validateBusyTimeRule(rule);
+		for (const rule of rules) {
+			defaultRuleSet.validate(rule);
 		}
 
-		this.busyTimeRules = busyTimeRules;
+		this.rules = rules;
 	}
 
 	public async validateOrder(order: Order): Promise<void> {
-		if (!this.busyTimeRules || this.busyTimeRules.length === 0) {
+		if (!this.rules || this.rules.length === 0) {
 			this.logger.warn("No busy time rules set, using defaults");
 		}
 
@@ -236,7 +194,11 @@ export class Engine {
 		const orderData: OrderData = { ...order, currentTimeSeconds };
 		await this.addOrder(orderData);
 
-		for (const rule of this.busyTimeRules) {
+		for (const rule of this.rules) {
+			if (!this.isRuleActive(rule, order.orderTime)) {
+				continue;
+			}
+
 			const timeWindow = this.calculateTimeWindow({
 				orderTimeSeconds,
 				timeFrameSeconds: minutesToSeconds(rule.timeFrame),
@@ -244,7 +206,7 @@ export class Engine {
 
 			const ordersInWindow = await this.getOrdersInWindow(timeWindow);
 
-			if (this.shouldApplyBusyTime(ordersInWindow, rule)) {
+			if (this.exceedsThreshold(ordersInWindow, rule)) {
 				const busyTimeData: BusyTimeData = {
 					orderTimeSeconds,
 					currentTimeSeconds,
@@ -340,8 +302,13 @@ export class Engine {
 		for (let i = 0; i < entries.length; i += 2) {
 			const value = entries[i] as string;
 			const score = parseInt(entries[i + 1] as string, 10);
-			const { orderId, orderTime, itemsCount, totalPrice } =
-				this.parseOrderValue(value, score);
+			const { orderId, orderTime, items } = this.parseOrderValue(value, score);
+
+			const itemsCount = items.reduce((sum, item) => sum + item.quantity, 0);
+			const totalPrice = items.reduce(
+				(sum, item) => sum + item.price * item.quantity,
+				0,
+			);
 
 			orders.push({
 				orderId,
@@ -390,36 +357,30 @@ export class Engine {
 		);
 	}
 
-	private getOrderValue(orderData: OrderData): string {
-		const { orderId, currentTimeSeconds, itemsCount, totalPrice, source } =
-			orderData;
-
-		return `${orderId}:${currentTimeSeconds}:${itemsCount ?? 0}:${totalPrice ?? 0}:${source || ORDER_SOURCE.PERDIEM}`;
+	private getOrderValue(orderData: OrderData): Buffer {
+		return pack({
+			orderId: orderData.orderId,
+			currentTimeSeconds: orderData.currentTimeSeconds,
+			items: orderData.items,
+			totalPrice: orderData.totalAmountCents,
+			source: orderData.source || ORDER_SOURCE.PERDIEM,
+		});
 	}
 
 	private getBusyTimeValue(busyTimeData: BusyTimeData): string {
 		return `${busyTimeData.currentTimeSeconds}:${busyTimeData.prepTime}`;
 	}
 
-	private parseOrderValue(value: string, score: number) {
-		const [
-			orderId,
-			currentTimeSecondsStr,
-			itemsCountStr,
-			totalPriceStr,
-			source,
-		] = value.split(":");
-
-		const itemsCount = parseInt(itemsCountStr, 10);
-		const totalPrice = parseFloat(totalPriceStr);
+	private parseOrderValue(value: Buffer | string, score: number) {
+		const data = unpack(Buffer.from(value)) as RedisOrder;
 
 		return {
-			orderId,
+			orderId: data.orderId,
 			orderTime: scoreToDate(score),
-			currentTimeSeconds: parseInt(currentTimeSecondsStr, 10),
-			itemsCount: Number.isNaN(itemsCount) ? undefined : itemsCount,
-			totalPrice: Number.isNaN(totalPrice) ? undefined : totalPrice,
-			source: (source || ORDER_SOURCE.PERDIEM) as OrderSource,
+			currentTimeSeconds: data.currentTimeSeconds,
+			items: data.items,
+			totalPrice: data.totalPrice,
+			source: data.source || ORDER_SOURCE.PERDIEM,
 		};
 	}
 
@@ -516,30 +477,80 @@ export class Engine {
 		for (let i = 0; i < entries.length; i += 2) {
 			const value = entries[i] as string;
 			const score = parseInt(entries[i + 1] as string, 10);
-			const { orderId, currentTimeSeconds, itemsCount, totalPrice } =
+			const { orderId, currentTimeSeconds, items, totalPrice } =
 				this.parseOrderValue(value, score);
+
+			const itemsCount = items.reduce((sum, item) => sum + item.quantity, 0);
+			const categoryIds = [...new Set(items.map((item) => item.categoryId))];
 
 			orders.push({
 				orderId,
 				currentTimeSeconds,
 				itemsCount,
 				totalPrice,
+				categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
 			});
 		}
 
 		return orders;
 	}
 
-	private shouldApplyBusyTime(
+	private isRuleActive(rule: Rule, orderTime: Date): boolean {
+		const zonedDate = toZonedTime(orderTime, this.timeZone);
+
+		const dayOfWeek = getDay(zonedDate);
+
+		if (
+			Array.isArray(rule.weekDays) &&
+			rule.weekDays.length > 0 &&
+			!rule.weekDays.includes(dayOfWeek)
+		) {
+			return false;
+		}
+
+		const orderMinutes = getHours(zonedDate) * 60 + getMinutes(zonedDate);
+
+		if (rule.startTime) {
+			const startTimeMinutes = timeStringToMinutes(rule.startTime);
+
+			if (orderMinutes < startTimeMinutes) {
+				return false;
+			}
+		}
+
+		if (rule.endTime) {
+			const endTimeMinutes = timeStringToMinutes(rule.endTime);
+
+			if (orderMinutes > endTimeMinutes) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private exceedsThreshold(
 		ordersInWindow: RedisOrderValue[],
-		rule: BusyTimeRule,
+		rule: Rule,
 	): boolean {
-		const totalOrders = ordersInWindow.length;
-		const totalItems = ordersInWindow.reduce(
+		const relevantOrders =
+			rule.categoryIds.length > 0
+				? ordersInWindow.filter((order) => {
+						if (!order.categoryIds || order.categoryIds.length === 0) {
+							return false;
+						}
+						return order.categoryIds.some((catId) =>
+							rule.categoryIds.includes(catId),
+						);
+					})
+				: ordersInWindow;
+
+		const totalOrders = relevantOrders.length;
+		const totalItems = relevantOrders.reduce(
 			(sum, o) => sum + (o.itemsCount ?? 0),
 			0,
 		);
-		const totalPriceSum = ordersInWindow.reduce(
+		const totalPriceSum = relevantOrders.reduce(
 			(sum, o) => sum + (o.totalPrice ?? 0),
 			0,
 		);
@@ -547,7 +558,7 @@ export class Engine {
 		return (
 			(rule.maxOrders != null && totalOrders >= rule.maxOrders) ||
 			(rule.maxItems != null && totalItems >= rule.maxItems) ||
-			(rule.totalPrice != null && totalPriceSum >= rule.totalPrice)
+			(rule.maxAmountCents != null && totalPriceSum >= rule.maxAmountCents)
 		);
 	}
 }

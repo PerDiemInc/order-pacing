@@ -2,13 +2,37 @@ import { expect } from "chai";
 import type Redis from "ioredis";
 import RedisMock from "ioredis-mock";
 import { beforeEach, describe, it } from "mocha";
+import { pack } from "msgpackr";
 import {
 	type BusyTimeRule,
 	Engine,
+	ORDER_SOURCE,
 	type Order,
 	TIMEFRAME_MODE,
 } from "../src/Engine";
 import { toSeconds } from "../src/utils";
+
+// Helper function to create packed order data for tests
+function packOrderData(params: {
+	orderId: string;
+	currentTimeSeconds: number;
+	items: {
+		itemId: string;
+		categoryId: string;
+		quantity: number;
+		price: number;
+	}[];
+	totalPrice: number;
+	source?: string;
+}): Buffer {
+	return pack({
+		orderId: params.orderId,
+		currentTimeSeconds: params.currentTimeSeconds,
+		items: params.items,
+		totalPrice: params.totalPrice,
+		source: params.source || ORDER_SOURCE.PERDIEM,
+	});
+}
 
 describe("Engine", () => {
 	let redisMock: Redis;
@@ -43,13 +67,20 @@ describe("Engine", () => {
 			const order: Order = {
 				orderId: "order-1",
 				orderTime: new Date(),
-				itemsCount: 5,
+				items: [
+					{
+						itemId: "item-1",
+						categoryId: "cat-1",
+						quantity: 5,
+						price: 100,
+					},
+				],
 				totalPrice: 100,
 			};
 
 			await engine.validateOrder(order);
 
-			const ordersExist = await redisMock.exists(`orders:${bucket}`);
+			const ordersExist = await redisMock.exists(`orders:$${bucket}`);
 			expect(ordersExist).to.equal(1);
 		});
 	});
@@ -60,6 +91,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 30,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 15,
 					maxItems: 50,
 					totalPrice: 1000,
@@ -86,6 +119,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 0,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 10,
 				},
 			];
@@ -100,6 +135,8 @@ describe("Engine", () => {
 				{
 					timeFrame: -5,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 10,
 				},
 			];
@@ -114,6 +151,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 30,
 					prepTime: 0,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 10,
 				},
 			];
@@ -128,6 +167,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 30,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 0,
 				},
 			];
@@ -142,6 +183,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 30,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxItems: -5,
 				},
 			];
@@ -156,6 +199,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 30,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					totalPrice: 0,
 				},
 			];
@@ -170,6 +215,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 30,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 				},
 			];
 
@@ -183,6 +230,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 30,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 10,
 				},
 			];
@@ -195,6 +244,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 30,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxItems: 50,
 				},
 			];
@@ -207,6 +258,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 30,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					totalPrice: 1000,
 				},
 			];
@@ -218,8 +271,15 @@ describe("Engine", () => {
 	describe("validateOrder", () => {
 		const order: Order = {
 			orderId: "order-1",
-			orderTime: new Date("2024-01-01T12:00:00Z"),
-			itemsCount: 5,
+			orderTime: new Date(Date.now() + 3600 * 1000), // 1 hour from now
+			items: [
+				{
+					itemId: "item-1",
+					categoryId: "cat-1",
+					quantity: 5,
+					price: 100,
+				},
+			],
 			totalPrice: 100,
 		};
 
@@ -228,6 +288,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 15,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 10,
 					maxItems: 50,
 					totalPrice: 1000,
@@ -238,24 +300,26 @@ describe("Engine", () => {
 		it("should clean old orders and busy times", async () => {
 			await engine.validateOrder(order);
 
-			const ordersCount = await redisMock.zcard(`orders:${bucket}`);
+			const ordersCount = await redisMock.zcard(`orders:$${bucket}`);
 			expect(ordersCount).to.be.greaterThanOrEqual(0);
 		});
 
 		it("should add order to Redis", async () => {
 			await engine.validateOrder(order);
 
-			const ordersCount = await redisMock.zcard(`orders:${bucket}`);
+			const ordersCount = await redisMock.zcard(`orders:$${bucket}`);
 			expect(ordersCount).to.equal(1);
 
-			const orders = await redisMock.zrange(`orders:${bucket}`, 0, -1);
-			expect(orders[0]).to.include(order.orderId);
+			// Verify the order was stored correctly by retrieving it
+			const orders = await engine.getOrders();
+			expect(orders).to.have.lengthOf(1);
+			expect(orders[0].orderId).to.equal(order.orderId);
 		});
 
 		it("should query orders in time window", async () => {
 			await engine.validateOrder(order);
 
-			const ordersCount = await redisMock.zcard(`orders:${bucket}`);
+			const ordersCount = await redisMock.zcard(`orders:$${bucket}`);
 			expect(ordersCount).to.be.greaterThanOrEqual(1);
 		});
 
@@ -268,15 +332,22 @@ describe("Engine", () => {
 
 			for (let i = 0; i < 10; i++) {
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds,
-					`order-${i}:${toSeconds(Date.now())}:2:50`,
+					packOrderData({
+						orderId: `order-${i}`,
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{ itemId: "item-1", categoryId: "cat-1", quantity: 2, price: 50 },
+						],
+						totalPrice: 50,
+					}),
 				);
 			}
 
 			await engine.validateOrder(futureOrder);
 
-			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 			expect(busyTimesCount).to.be.greaterThan(0);
 		});
 
@@ -289,15 +360,27 @@ describe("Engine", () => {
 
 			for (let i = 0; i < 5; i++) {
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds,
-					`order-${i}:${toSeconds(Date.now())}:10:50`,
+					packOrderData({
+						orderId: `order-${i}`,
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 10,
+								price: 50,
+							},
+						],
+						totalPrice: 50,
+					}),
 				);
 			}
 
 			await engine.validateOrder(futureOrder);
 
-			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 			expect(busyTimesCount).to.be.greaterThan(0);
 		});
 
@@ -310,22 +393,34 @@ describe("Engine", () => {
 
 			for (let i = 0; i < 5; i++) {
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds,
-					`order-${i}:${toSeconds(Date.now())}:2:200`,
+					packOrderData({
+						orderId: `order-${i}`,
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 2,
+								price: 200,
+							},
+						],
+						totalPrice: 200,
+					}),
 				);
 			}
 
 			await engine.validateOrder(futureOrder);
 
-			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 			expect(busyTimesCount).to.be.greaterThan(0);
 		});
 
 		it("should not apply busy time when thresholds not exceeded", async () => {
 			await engine.validateOrder(order);
 
-			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 			expect(busyTimesCount).to.equal(0);
 		});
 
@@ -337,19 +432,33 @@ describe("Engine", () => {
 			const orderTimeSeconds = toSeconds(futureOrder.orderTime);
 
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				orderTimeSeconds,
-				`order-1:${toSeconds(Date.now())}:3:75`,
+				packOrderData({
+					orderId: "order-1",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 3, price: 75 },
+					],
+					totalPrice: 75,
+				}),
 			);
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				orderTimeSeconds,
-				`order-2:${toSeconds(Date.now())}:2:50`,
+				packOrderData({
+					orderId: "order-2",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 2, price: 50 },
+					],
+					totalPrice: 50,
+				}),
 			);
 
 			await engine.validateOrder(futureOrder);
 
-			const ordersCount = await redisMock.zcard(`orders:${bucket}`);
+			const ordersCount = await redisMock.zcard(`orders:$${bucket}`);
 			expect(ordersCount).to.equal(3);
 		});
 	});
@@ -366,17 +475,17 @@ describe("Engine", () => {
 			const nowSeconds = toSeconds(now);
 
 			await redisMock.zadd(
-				`busytimes:${bucket}`,
+				`busytimes:$${bucket}`,
 				nowSeconds + 3600,
 				`${toSeconds(Date.now())}:20`,
 			);
 			await redisMock.zadd(
-				`busytimes:${bucket}`,
+				`busytimes:$${bucket}`,
 				nowSeconds,
 				`${toSeconds(Date.now())}:15`,
 			);
 			await redisMock.zadd(
-				`busytimes:${bucket}`,
+				`busytimes:$${bucket}`,
 				nowSeconds + 1800,
 				`${toSeconds(Date.now())}:25`,
 			);
@@ -392,14 +501,14 @@ describe("Engine", () => {
 		it("should clean old busy times before fetching", async () => {
 			const now = toSeconds(Date.now());
 			await redisMock.zadd(
-				`busytimes:${bucket}`,
+				`busytimes:$${bucket}`,
 				now - 1000,
 				`${now - 1000}:20`,
 			);
 
 			await engine.getBusyTimes();
 
-			const count = await redisMock.zcard(`busytimes:${bucket}`);
+			const count = await redisMock.zcard(`busytimes:$${bucket}`);
 			expect(count).to.equal(0);
 		});
 
@@ -408,7 +517,7 @@ describe("Engine", () => {
 			const nowSeconds = toSeconds(now);
 
 			await redisMock.zadd(
-				`busytimes:${bucket}`,
+				`busytimes:$${bucket}`,
 				nowSeconds,
 				`${toSeconds(Date.now())}:30`,
 			);
@@ -433,14 +542,28 @@ describe("Engine", () => {
 			const nowSeconds = toSeconds(now);
 
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				nowSeconds,
-				`order-1:${toSeconds(Date.now())}:5:100`,
+				packOrderData({
+					orderId: "order-1",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 5, price: 100 },
+					],
+					totalPrice: 100,
+				}),
 			);
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				nowSeconds + 600,
-				`order-2:${toSeconds(Date.now())}:3:75`,
+				packOrderData({
+					orderId: "order-2",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 3, price: 75 },
+					],
+					totalPrice: 75,
+				}),
 			);
 
 			const result = await engine.getOrders();
@@ -458,14 +581,14 @@ describe("Engine", () => {
 			const now = toSeconds(Date.now());
 			const oldTime = now - 604801;
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				oldTime,
-				`order-old:${oldTime}:5:100`,
+				`order-old:${oldTime}:5:100:perdiem:cat-1`,
 			);
 
 			await engine.getOrders();
 
-			const count = await redisMock.zcard(`orders:${bucket}`);
+			const count = await redisMock.zcard(`orders:$${bucket}`);
 			expect(count).to.equal(0);
 		});
 
@@ -474,9 +597,21 @@ describe("Engine", () => {
 			const nowSeconds = toSeconds(now);
 
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				nowSeconds,
-				`order-123:${toSeconds(Date.now())}:10:250.50`,
+				packOrderData({
+					orderId: "order-123",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{
+							itemId: "item-1",
+							categoryId: "cat-1",
+							quantity: 10,
+							price: 250.5,
+						},
+					],
+					totalPrice: 250.5,
+				}),
 			);
 
 			const result = await engine.getOrders();
@@ -503,7 +638,7 @@ describe("Engine", () => {
 			const busyEndTime = orderTimeSeconds + 1800;
 
 			await redisMock.zadd(
-				`busytimes:${bucket}`,
+				`busytimes:$${bucket}`,
 				busyEndTime,
 				`${toSeconds(Date.now())}:30`,
 			);
@@ -518,7 +653,7 @@ describe("Engine", () => {
 			const busyEndTime = new Date("2024-01-01T12:00:00Z");
 
 			await redisMock.zadd(
-				`busytimes:${bucket}`,
+				`busytimes:$${bucket}`,
 				toSeconds(busyEndTime),
 				`${toSeconds(Date.now())}:30`,
 			);
@@ -535,12 +670,12 @@ describe("Engine", () => {
 			const busy2End = busy1End + 600;
 
 			await redisMock.zadd(
-				`busytimes:${bucket}`,
+				`busytimes:$${bucket}`,
 				busy1End,
 				`${toSeconds(Date.now())}:15`,
 			);
 			await redisMock.zadd(
-				`busytimes:${bucket}`,
+				`busytimes:$${bucket}`,
 				busy2End,
 				`${toSeconds(Date.now())}:10`,
 			);
@@ -555,7 +690,7 @@ describe("Engine", () => {
 			const busyEndTime = new Date("2024-01-01T12:30:00Z");
 
 			await redisMock.zadd(
-				`busytimes:${bucket}`,
+				`busytimes:$${bucket}`,
 				toSeconds(busyEndTime),
 				`${toSeconds(Date.now())}:30`,
 			);
@@ -573,6 +708,8 @@ describe("Engine", () => {
 					{
 						timeFrame: 15,
 						prepTime: 20,
+						categoryIds: [],
+						weekDays: [],
 						maxOrders: 2,
 					},
 				]);
@@ -582,34 +719,77 @@ describe("Engine", () => {
 
 				// Add orders before the current order
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds - 300, // 5 min before
-					`order-before-1:${toSeconds(Date.now())}:5:100`,
+					packOrderData({
+						orderId: "order-before-1",
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 5,
+								price: 100,
+							},
+						],
+						totalPrice: 100,
+					}),
 				);
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds - 600, // 10 min before
-					`order-before-2:${toSeconds(Date.now())}:5:100`,
+					packOrderData({
+						orderId: "order-before-2",
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 5,
+								price: 100,
+							},
+						],
+						totalPrice: 100,
+					}),
 				);
 
 				// Add order after (should not be considered in BEFORE_ONLY mode)
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds + 300,
-					`order-after:${toSeconds(Date.now())}:5:100`,
+					packOrderData({
+						orderId: "order-after",
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 5,
+								price: 100,
+							},
+						],
+						totalPrice: 100,
+					}),
 				);
 
 				const order: Order = {
 					orderId: "order-current",
 					orderTime,
-					itemsCount: 5,
+					items: [
+						{
+							itemId: "item-1",
+							categoryId: "cat-1",
+							quantity: 5,
+							price: 100,
+						},
+					],
 					totalPrice: 100,
 				};
 
 				await engine.validateOrder(order);
 
 				// Should apply busy time because we have 2 orders before + current order
-				const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+				const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 				expect(busyTimesCount).to.be.greaterThan(0);
 			});
 		});
@@ -626,6 +806,8 @@ describe("Engine", () => {
 					{
 						timeFrame: 30,
 						prepTime: 20,
+						categoryIds: [],
+						weekDays: [],
 						maxOrders: 2,
 					},
 				]);
@@ -635,29 +817,60 @@ describe("Engine", () => {
 
 				// Add order 10 min before (within 15 min centered window)
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds - 600,
-					`order-before:${toSeconds(Date.now())}:5:100`,
+					packOrderData({
+						orderId: "order-before",
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 5,
+								price: 100,
+							},
+						],
+						totalPrice: 100,
+					}),
 				);
 
 				// Add order 10 min after (within 15 min centered window)
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds + 600,
-					`order-after:${toSeconds(Date.now())}:5:100`,
+					packOrderData({
+						orderId: "order-after",
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 5,
+								price: 100,
+							},
+						],
+						totalPrice: 100,
+					}),
 				);
 
 				const order: Order = {
 					orderId: "order-current",
 					orderTime,
-					itemsCount: 5,
+					items: [
+						{
+							itemId: "item-1",
+							categoryId: "cat-1",
+							quantity: 5,
+							price: 100,
+						},
+					],
 					totalPrice: 100,
 				};
 
 				await centeredEngine.validateOrder(order);
 
 				// Should apply busy time (3 orders total)
-				const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+				const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 				expect(busyTimesCount).to.be.greaterThan(0);
 			});
 		});
@@ -674,6 +887,8 @@ describe("Engine", () => {
 					{
 						timeFrame: 15,
 						prepTime: 20,
+						categoryIds: [],
+						weekDays: [],
 						maxOrders: 2,
 					},
 				]);
@@ -683,34 +898,77 @@ describe("Engine", () => {
 
 				// Add orders after the current order
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds + 300,
-					`order-after-1:${toSeconds(Date.now())}:5:100`,
+					packOrderData({
+						orderId: "order-after-1",
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 5,
+								price: 100,
+							},
+						],
+						totalPrice: 100,
+					}),
 				);
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds + 600,
-					`order-after-2:${toSeconds(Date.now())}:5:100`,
+					packOrderData({
+						orderId: "order-after-2",
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 5,
+								price: 100,
+							},
+						],
+						totalPrice: 100,
+					}),
 				);
 
 				// Add order before (should not be considered in AFTER_ONLY mode)
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds - 300,
-					`order-before:${toSeconds(Date.now())}:5:100`,
+					packOrderData({
+						orderId: "order-before",
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 5,
+								price: 100,
+							},
+						],
+						totalPrice: 100,
+					}),
 				);
 
 				const order: Order = {
 					orderId: "order-current",
 					orderTime,
-					itemsCount: 5,
+					items: [
+						{
+							itemId: "item-1",
+							categoryId: "cat-1",
+							quantity: 5,
+							price: 100,
+						},
+					],
 					totalPrice: 100,
 				};
 
 				await afterEngine.validateOrder(order);
 
 				// Should apply busy time (3 orders after including current)
-				const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+				const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 				expect(busyTimesCount).to.be.greaterThan(0);
 			});
 		});
@@ -727,6 +985,8 @@ describe("Engine", () => {
 					{
 						timeFrame: 15,
 						prepTime: 20,
+						categoryIds: [],
+						weekDays: [],
 						maxOrders: 2,
 					},
 				]);
@@ -736,28 +996,59 @@ describe("Engine", () => {
 
 				// Add order 10 min before (within 15 min window)
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds - 600,
-					`order-before:${toSeconds(Date.now())}:5:100`,
+					packOrderData({
+						orderId: "order-before",
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 5,
+								price: 100,
+							},
+						],
+						totalPrice: 100,
+					}),
 				);
 
 				// Add order 10 min after (within 15 min window)
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds + 600,
-					`order-after:${toSeconds(Date.now())}:5:100`,
+					packOrderData({
+						orderId: "order-after",
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{
+								itemId: "item-1",
+								categoryId: "cat-1",
+								quantity: 5,
+								price: 100,
+							},
+						],
+						totalPrice: 100,
+					}),
 				);
 
 				const order: Order = {
 					orderId: "order-current",
 					orderTime,
-					itemsCount: 5,
+					items: [
+						{
+							itemId: "item-1",
+							categoryId: "cat-1",
+							quantity: 5,
+							price: 100,
+						},
+					],
 					totalPrice: 100,
 				};
 
 				await bothEngine.validateOrder(order);
 
-				const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+				const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 				expect(busyTimesCount).to.be.greaterThan(0);
 			});
 		});
@@ -769,11 +1060,15 @@ describe("Engine", () => {
 				{
 					timeFrame: 15,
 					prepTime: 10,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 5,
 				},
 				{
 					timeFrame: 30,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 10,
 				},
 			];
@@ -794,11 +1089,15 @@ describe("Engine", () => {
 				{
 					timeFrame: 15,
 					prepTime: 10,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 2,
 				},
 				{
 					timeFrame: 30,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 10,
 				},
 			]);
@@ -808,27 +1107,48 @@ describe("Engine", () => {
 
 			// Add 2 orders within 15 minutes (should trigger rule 1)
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				orderTimeSeconds - 300,
-				`order-1:${toSeconds(Date.now())}:5:100`,
+				packOrderData({
+					orderId: "order-1",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 5, price: 100 },
+					],
+					totalPrice: 100,
+				}),
 			);
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				orderTimeSeconds - 600,
-				`order-2:${toSeconds(Date.now())}:5:100`,
+				packOrderData({
+					orderId: "order-2",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 5, price: 100 },
+					],
+					totalPrice: 100,
+				}),
 			);
 
 			const order: Order = {
 				orderId: "order-current",
 				orderTime,
-				itemsCount: 5,
+				items: [
+					{
+						itemId: "item-1",
+						categoryId: "cat-1",
+						quantity: 5,
+						price: 100,
+					},
+				],
 				totalPrice: 100,
 			};
 
 			await engine.validateOrder(order);
 
 			// Should have at least 1 busy time entry (from rule 1)
-			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 			expect(busyTimesCount).to.be.greaterThan(0);
 		});
 
@@ -840,16 +1160,22 @@ describe("Engine", () => {
 				{
 					timeFrame: 15,
 					prepTime: 10,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 3,
 				},
 				{
 					timeFrame: 15,
 					prepTime: 15,
+					categoryIds: [],
+					weekDays: [],
 					maxItems: 20,
 				},
 				{
 					timeFrame: 15,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					totalPrice: 500,
 				},
 			]);
@@ -860,27 +1186,48 @@ describe("Engine", () => {
 			// Add 2 orders with high item count and price
 			// This should trigger all three rules
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				orderTimeSeconds - 300,
-				`order-1:${toSeconds(Date.now())}:10:300`,
+				packOrderData({
+					orderId: "order-1",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 10, price: 300 },
+					],
+					totalPrice: 300,
+				}),
 			);
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				orderTimeSeconds - 600,
-				`order-2:${toSeconds(Date.now())}:10:300`,
+				packOrderData({
+					orderId: "order-2",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 10, price: 300 },
+					],
+					totalPrice: 300,
+				}),
 			);
 
 			const order: Order = {
 				orderId: "order-current",
 				orderTime,
-				itemsCount: 10,
+				items: [
+					{
+						itemId: "item-1",
+						categoryId: "cat-1",
+						quantity: 10,
+						price: 300,
+					},
+				],
 				totalPrice: 300,
 			};
 
 			await engine.validateOrder(order);
 
 			// Should have busy times from multiple rules
-			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 			expect(busyTimesCount).to.be.greaterThan(0);
 		});
 
@@ -889,11 +1236,15 @@ describe("Engine", () => {
 				{
 					timeFrame: 15,
 					prepTime: 10,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 5,
 				},
 				{
 					timeFrame: 0, // Invalid
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 10,
 				},
 			];
@@ -909,16 +1260,22 @@ describe("Engine", () => {
 				{
 					timeFrame: 20,
 					prepTime: 10,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 3,
 				},
 				{
 					timeFrame: 20, // Same timeFrame as above
 					prepTime: 15,
+					categoryIds: [],
+					weekDays: [],
 					maxItems: 15,
 				},
 				{
 					timeFrame: 20, // Same timeFrame as above
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					totalPrice: 300,
 				},
 			]);
@@ -928,27 +1285,48 @@ describe("Engine", () => {
 
 			// Add orders that will trigger all three rules
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				orderTimeSeconds - 300,
-				`order-1:${toSeconds(Date.now())}:6:120`,
+				packOrderData({
+					orderId: "order-1",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 6, price: 120 },
+					],
+					totalPrice: 120,
+				}),
 			);
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				orderTimeSeconds - 600,
-				`order-2:${toSeconds(Date.now())}:6:120`,
+				packOrderData({
+					orderId: "order-2",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 6, price: 120 },
+					],
+					totalPrice: 120,
+				}),
 			);
 
 			const order: Order = {
 				orderId: "order-current",
 				orderTime,
-				itemsCount: 6,
+				items: [
+					{
+						itemId: "item-1",
+						categoryId: "cat-1",
+						quantity: 6,
+						price: 120,
+					},
+				],
 				totalPrice: 120,
 			};
 
 			await engine.validateOrder(order);
 
 			// Should have multiple busy times (one for each triggered rule)
-			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 			expect(busyTimesCount).to.be.greaterThan(0);
 		});
 
@@ -959,11 +1337,15 @@ describe("Engine", () => {
 				{
 					timeFrame: 10,
 					prepTime: 5,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 2,
 				},
 				{
 					timeFrame: 30,
 					prepTime: 15,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 5,
 				},
 			]);
@@ -973,25 +1355,53 @@ describe("Engine", () => {
 
 			// Add orders across different time windows
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				orderTimeSeconds - 300, // 5 min before
-				`order-1:${toSeconds(Date.now())}:5:100`,
+				packOrderData({
+					orderId: "order-1",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 5, price: 100 },
+					],
+					totalPrice: 100,
+				}),
 			);
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				orderTimeSeconds - 900, // 15 min before
-				`order-2:${toSeconds(Date.now())}:5:100`,
+				packOrderData({
+					orderId: "order-2",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 5, price: 100 },
+					],
+					totalPrice: 100,
+				}),
 			);
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				orderTimeSeconds - 1500, // 25 min before
-				`order-3:${toSeconds(Date.now())}:5:100`,
+				packOrderData({
+					orderId: "order-3",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "cat-1", quantity: 5, price: 100 },
+					],
+					totalPrice: 100,
+				}),
 			);
 
 			const order: Order = {
 				orderId: "order-current",
 				orderTime,
-				itemsCount: 5,
+				items: [
+					{
+						itemId: "item-1",
+						categoryId: "cat-1",
+						quantity: 5,
+						price: 100,
+					},
+				],
 				totalPrice: 100,
 			};
 
@@ -999,7 +1409,161 @@ describe("Engine", () => {
 
 			// Rule 1 should trigger (2 orders in 10 min window)
 			// Rule 2 should trigger (4 orders in 30 min window)
-			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
+			expect(busyTimesCount).to.be.greaterThan(0);
+		});
+	});
+
+	describe("category-based busy modes", () => {
+		it("should store and parse category IDs correctly", async () => {
+			const now = Date.now() + 3600 * 1000;
+			const nowSeconds = toSeconds(now);
+
+			await redisMock.zadd(
+				`orders:$${bucket}`,
+				nowSeconds,
+				packOrderData({
+					orderId: "order-1",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{
+							itemId: "item-1",
+							categoryId: "pizza,burger",
+							quantity: 5,
+							price: 100,
+						},
+					],
+					totalPrice: 100,
+				}),
+			);
+
+			const result = await engine.getOrders();
+
+			expect(result).to.have.lengthOf(1);
+			expect(result[0].orderId).to.equal("order-1");
+		});
+
+		it("should not trigger busy time when categories don't match", async () => {
+			// Rule applies only to "pizza" category
+			engine.setBusyTimeRules([
+				{
+					timeFrame: 15,
+					prepTime: 20,
+					categoryIds: ["pizza"],
+					weekDays: [],
+					maxOrders: 2,
+				},
+			]);
+
+			const orderTime = new Date(Date.now() + 3600 * 1000);
+			const orderTimeSeconds = toSeconds(orderTime);
+
+			// Add only burger orders - should NOT trigger pizza rule
+			await redisMock.zadd(
+				`orders:$${bucket}`,
+				orderTimeSeconds - 300,
+				packOrderData({
+					orderId: "order-1",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "burger", quantity: 1, price: 15 },
+					],
+					totalPrice: 15,
+				}),
+			);
+			await redisMock.zadd(
+				`orders:$${bucket}`,
+				orderTimeSeconds - 600,
+				packOrderData({
+					orderId: "order-2",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "burger", quantity: 1, price: 15 },
+					],
+					totalPrice: 15,
+				}),
+			);
+
+			const order: Order = {
+				orderId: "order-current",
+				orderTime,
+				items: [
+					{
+						itemId: "item-1",
+						categoryId: "burger",
+						quantity: 1,
+						price: 15,
+					},
+				],
+				totalPrice: 15,
+			};
+
+			await engine.validateOrder(order);
+
+			// Should NOT trigger busy time because no pizza orders
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
+			expect(busyTimesCount).to.equal(0);
+		});
+
+		it("should apply global rule when categoryIds is empty", async () => {
+			// Rule with empty categoryIds applies to all orders
+			engine.setBusyTimeRules([
+				{
+					timeFrame: 15,
+					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
+					maxOrders: 2,
+				},
+			]);
+
+			const orderTime = new Date(Date.now() + 3600 * 1000);
+			const orderTimeSeconds = toSeconds(orderTime);
+
+			// Add mixed category orders
+			await redisMock.zadd(
+				`orders:$${bucket}`,
+				orderTimeSeconds - 300,
+				packOrderData({
+					orderId: "order-1",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "pizza", quantity: 1, price: 10 },
+					],
+					totalPrice: 10,
+				}),
+			);
+			await redisMock.zadd(
+				`orders:$${bucket}`,
+				orderTimeSeconds - 600,
+				packOrderData({
+					orderId: "order-2",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{ itemId: "item-1", categoryId: "burger", quantity: 1, price: 15 },
+					],
+					totalPrice: 15,
+				}),
+			);
+
+			const order: Order = {
+				orderId: "order-current",
+				orderTime,
+				items: [
+					{
+						itemId: "item-1",
+						categoryId: "pasta",
+						quantity: 1,
+						price: 12,
+					},
+				],
+				totalPrice: 12,
+			};
+
+			await engine.validateOrder(order);
+
+			// Should trigger busy time (all 3 orders count)
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 			expect(busyTimesCount).to.be.greaterThan(0);
 		});
 	});
@@ -1009,7 +1573,7 @@ describe("Engine", () => {
 			const order: Order = {
 				orderId: "order-1",
 				orderTime: new Date(),
-				itemsCount: 0,
+				items: [],
 				totalPrice: 0,
 			};
 
@@ -1017,13 +1581,15 @@ describe("Engine", () => {
 				{
 					timeFrame: 15,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 10,
 				},
 			]);
 
 			await engine.validateOrder(order);
 
-			const ordersCount = await redisMock.zcard(`orders:${bucket}`);
+			const ordersCount = await redisMock.zcard(`orders:$${bucket}`);
 			expect(ordersCount).to.equal(1);
 		});
 
@@ -1031,7 +1597,14 @@ describe("Engine", () => {
 			const order: Order = {
 				orderId: "order-1",
 				orderTime: new Date(),
-				itemsCount: 1000,
+				items: [
+					{
+						itemId: "item-1",
+						categoryId: "cat-1",
+						quantity: 1000,
+						price: 999999.99,
+					},
+				],
 				totalPrice: 999999.99,
 			};
 
@@ -1039,6 +1612,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 15,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 10,
 					maxItems: 100,
 					totalPrice: 10000,
@@ -1047,16 +1622,28 @@ describe("Engine", () => {
 
 			await engine.validateOrder(order);
 
-			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
 			expect(busyTimesCount).to.equal(1);
 		});
 
 		it("should handle fractional prices correctly", async () => {
 			const now = Date.now() + 3600 * 1000;
 			await redisMock.zadd(
-				`orders:${bucket}`,
+				`orders:$${bucket}`,
 				toSeconds(now),
-				`order-1:${toSeconds(Date.now())}:5:123.45`,
+				packOrderData({
+					orderId: "order-1",
+					currentTimeSeconds: toSeconds(Date.now()),
+					items: [
+						{
+							itemId: "item-1",
+							categoryId: "cat-1",
+							quantity: 5,
+							price: 123.45,
+						},
+					],
+					totalPrice: 123.45,
+				}),
 			);
 
 			const result = await engine.getOrders();
@@ -1070,6 +1657,8 @@ describe("Engine", () => {
 				{
 					timeFrame: 15,
 					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
 					maxOrders: 5,
 				},
 			]);
@@ -1079,23 +1668,228 @@ describe("Engine", () => {
 
 			for (let i = 0; i < 4; i++) {
 				await redisMock.zadd(
-					`orders:${bucket}`,
+					`orders:$${bucket}`,
 					orderTimeSeconds,
-					`order-${i}:${toSeconds(Date.now())}:2:50`,
+					packOrderData({
+						orderId: `order-${i}`,
+						currentTimeSeconds: toSeconds(Date.now()),
+						items: [
+							{ itemId: "item-1", categoryId: "cat-1", quantity: 2, price: 50 },
+						],
+						totalPrice: 50,
+					}),
 				);
 			}
 
 			const order: Order = {
 				orderId: "order-5",
 				orderTime,
-				itemsCount: 2,
+				items: [
+					{
+						itemId: "item-1",
+						categoryId: "cat-1",
+						quantity: 2,
+						price: 50,
+					},
+				],
 				totalPrice: 50,
 			};
 
 			await engine.validateOrder(order);
 
+			const busyTimesCount = await redisMock.zcard(`busytimes:$${bucket}`);
+			expect(busyTimesCount).to.equal(1);
+		});
+	});
+
+	describe("day and time filtering", () => {
+		it("should apply rule only on specified weekdays", async () => {
+			// Rule applies only on Monday (1) and Wednesday (3)
+			engine.setBusyTimeRules([
+				{
+					timeFrame: 15,
+					prepTime: 20,
+					categoryIds: [],
+					weekDays: [1, 3], // Monday and Wednesday
+					maxOrders: 1,
+				},
+			]);
+
+			// Create a Monday order
+			const monday = new Date("2024-01-08T12:00:00Z"); // Jan 8, 2024 is a Monday
+			const mondayOrder: Order = {
+				orderId: "order-monday",
+				orderTime: monday,
+				items: [
+					{ itemId: "item-1", categoryId: "cat-1", quantity: 1, price: 100 },
+				],
+				totalPrice: 100,
+			};
+
+			await engine.validateOrder(mondayOrder);
+
+			// Should trigger busy time on Monday
+			let busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			expect(busyTimesCount).to.equal(1);
+
+			await redisMock.flushdb(); // Clean up
+
+			// Create a Tuesday order (should NOT trigger)
+			const tuesday = new Date("2024-01-09T12:00:00Z"); // Jan 9, 2024 is a Tuesday
+			const tuesdayOrder: Order = {
+				orderId: "order-tuesday",
+				orderTime: tuesday,
+				items: [
+					{ itemId: "item-1", categoryId: "cat-1", quantity: 1, price: 100 },
+				],
+				totalPrice: 100,
+			};
+
+			await engine.validateOrder(tuesdayOrder);
+
+			// Should NOT trigger busy time on Tuesday
+			busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			expect(busyTimesCount).to.equal(0);
+		});
+
+		it("should apply rule during specified time range", async () => {
+			// Rule applies only between 10 AM and 2 PM
+			engine.setBusyTimeRules([
+				{
+					timeFrame: 15,
+					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
+					startTime: "10:00", // 10:00 AM
+					endTime: "14:00", // 2:00 PM
+					maxOrders: 1,
+				},
+			]);
+
+			// Order at 11 AM (within range)
+			const elevenAM = new Date("2024-01-08T11:00:00Z");
+			const morningOrder: Order = {
+				orderId: "order-morning",
+				orderTime: elevenAM,
+				items: [
+					{ itemId: "item-1", categoryId: "cat-1", quantity: 1, price: 100 },
+				],
+				totalPrice: 100,
+			};
+
+			await engine.validateOrder(morningOrder);
+
+			// Should trigger busy time
+			let busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			expect(busyTimesCount).to.equal(1);
+
+			await redisMock.flushdb(); // Clean up
+
+			// Order at 3 PM (outside range)
+			const threePM = new Date("2024-01-08T15:00:00Z");
+			const afternoonOrder: Order = {
+				orderId: "order-afternoon",
+				orderTime: threePM,
+				items: [
+					{ itemId: "item-1", categoryId: "cat-1", quantity: 1, price: 100 },
+				],
+				totalPrice: 100,
+			};
+
+			await engine.validateOrder(afternoonOrder);
+
+			// Should NOT trigger busy time
+			busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			expect(busyTimesCount).to.equal(0);
+		});
+
+		it("should apply all-day rule when weekDays is empty", async () => {
+			// Rule with empty weekDays applies to all days
+			engine.setBusyTimeRules([
+				{
+					timeFrame: 15,
+					prepTime: 20,
+					categoryIds: [],
+					weekDays: [], // All days
+					maxOrders: 1,
+				},
+			]);
+
+			const anyDay = new Date("2024-01-15T12:00:00Z");
+			const order: Order = {
+				orderId: "order-any-day",
+				orderTime: anyDay,
+				items: [
+					{ itemId: "item-1", categoryId: "cat-1", quantity: 1, price: 100 },
+				],
+				totalPrice: 100,
+			};
+
+			await engine.validateOrder(order);
+
+			// Should trigger busy time on any day
 			const busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
 			expect(busyTimesCount).to.equal(1);
+		});
+
+		it("should apply rules based on store timezone, not UTC", async () => {
+			// Create engine with New York timezone (UTC-5 or UTC-4 depending on DST)
+			const nyEngine = new Engine({
+				redis: redisMock,
+				bucket,
+				timezone: "America/New_York",
+			});
+
+			// Rule applies only between 5 PM and 9 PM (local time)
+			nyEngine.setBusyTimeRules([
+				{
+					timeFrame: 15,
+					prepTime: 20,
+					categoryIds: [],
+					weekDays: [],
+					startTime: "17:00", // 5:00 PM
+					endTime: "21:00", // 9:00 PM
+					maxOrders: 1,
+				},
+			]);
+
+			// Order at 2024-01-08 22:00:00 UTC (which is 5 PM EST = 17:00 EST)
+			// Jan 8, 2024 is in EST (UTC-5), so 22:00 UTC = 17:00 EST
+			const orderInRange = new Date("2024-01-08T22:00:00Z");
+			const order1: Order = {
+				orderId: "order-in-range",
+				orderTime: orderInRange,
+				items: [
+					{ itemId: "item-1", categoryId: "cat-1", quantity: 1, price: 100 },
+				],
+				totalPrice: 100,
+			};
+
+			await nyEngine.validateOrder(order1);
+
+			// Should trigger busy time (5 PM EST is within 5-9 PM range)
+			let busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			expect(busyTimesCount).to.equal(1);
+
+			await redisMock.flushdb(); // Clean up
+
+			// Order at 2024-01-08 20:00:00 UTC (which is 3 PM EST = 15:00 EST)
+			// This is BEFORE 5 PM EST, so should not trigger
+			const orderOutOfRange = new Date("2024-01-08T20:00:00Z");
+			const order2: Order = {
+				orderId: "order-out-of-range",
+				orderTime: orderOutOfRange,
+				items: [
+					{ itemId: "item-1", categoryId: "cat-1", quantity: 1, price: 100 },
+				],
+				totalPrice: 100,
+			};
+
+			await nyEngine.validateOrder(order2);
+
+			// Should NOT trigger busy time (3 PM EST is before 5 PM)
+			busyTimesCount = await redisMock.zcard(`busytimes:${bucket}`);
+			expect(busyTimesCount).to.equal(0);
 		});
 	});
 });
