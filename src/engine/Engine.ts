@@ -157,7 +157,9 @@ export class Engine {
 			!this.engineRules.hasRules() ||
 			order.source !== OrderSource.PERDIEM
 		) {
-			this.logger.warn("No busy time rules not set, skipping order validation");
+			this.logger.warn(
+				"No busy time rules not set or not a Perdiem order, skipping to add busy time",
+			);
 
 			return;
 		}
