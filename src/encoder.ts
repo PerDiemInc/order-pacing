@@ -1,56 +1,109 @@
-import { pack, unpack } from "msgpackr";
+import { Packr } from "msgpackr";
 import type { BusyTime, Order } from "./engine/types";
+import { OrderSource } from "./engine/types";
+
+const packr = new Packr({
+	useRecords: true,
+	useTimestamp32: true,
+});
+
+enum OrderSourceMap {
+	PERDIEM,
+	OTHER,
+}
+
+enum OrderItemKeyMap {
+	itemId,
+	categoryId,
+	quantity,
+	price,
+}
+
+enum OrderKeyMap {
+	orderId,
+	items,
+	totalAmountCents,
+	source,
+	orderTime,
+	orderTimeSeconds,
+	currentTimeSeconds,
+}
+
+enum BusyTimeKeyMap {
+	startTime,
+	endTime,
+	orderTimeSeconds,
+	currentTimeSeconds,
+	busyTimeSeconds,
+}
 
 export function encodeOrder(order: Order): Buffer {
-	return pack({
-		orderId: order.orderId,
-		items: order.items,
-		totalAmountCents: order.totalAmountCents,
-		source: order.source,
-		orderTime: order.orderTime,
-		// @todo: derived
-		orderTimeSeconds: order.orderTimeSeconds,
-		currentTimeSeconds: order.currentTimeSeconds,
+	const encodedItems = (order.items || []).map((item) => ({
+		[OrderItemKeyMap.itemId]: item.itemId ?? "",
+		[OrderItemKeyMap.categoryId]: item.categoryId ?? "",
+		[OrderItemKeyMap.quantity]: item.quantity ?? 0,
+		[OrderItemKeyMap.price]: item.price ?? 0,
+	}));
+
+	return packr.pack({
+		[OrderKeyMap.orderId]: order.orderId ?? "",
+		[OrderKeyMap.items]: encodedItems,
+		[OrderKeyMap.totalAmountCents]: order.totalAmountCents ?? 0,
+		[OrderKeyMap.source]:
+			order.source === OrderSource.PERDIEM
+				? OrderSourceMap.PERDIEM
+				: OrderSourceMap.OTHER,
+		[OrderKeyMap.orderTime]: order.orderTime,
+		[OrderKeyMap.orderTimeSeconds]: order.orderTimeSeconds ?? 0,
+		[OrderKeyMap.currentTimeSeconds]: order.currentTimeSeconds ?? 0,
 	});
 }
 
 export function decodeOrder(buffer: Buffer): Order {
-	const data = unpack(buffer) as Order;
+	const data = packr.unpack(buffer) as Record<string, unknown>;
+
+	const decodedItems = Array.prototype.map.call(
+		data[OrderKeyMap.items] || [],
+		(item: Record<string, unknown>) => ({
+			itemId: item[OrderItemKeyMap.itemId],
+			categoryId: item[OrderItemKeyMap.categoryId],
+			quantity: item[OrderItemKeyMap.quantity],
+			price: item[OrderItemKeyMap.price],
+		}),
+	);
 
 	return {
-		orderId: data.orderId,
-		items: data.items,
-		totalAmountCents: data.totalAmountCents,
-		source: data.source,
-		orderTime: data.orderTime,
-		// @todo: derived
-		orderTimeSeconds: data.orderTimeSeconds,
-		currentTimeSeconds: data.currentTimeSeconds,
-	};
+		orderId: data[OrderKeyMap.orderId],
+		items: decodedItems,
+		totalAmountCents: data[OrderKeyMap.totalAmountCents],
+		source:
+			data[OrderKeyMap.source] === OrderSourceMap.PERDIEM
+				? OrderSource.PERDIEM
+				: OrderSource.OTHER,
+		orderTime: data[OrderKeyMap.orderTime],
+		orderTimeSeconds: data[OrderKeyMap.orderTimeSeconds],
+		currentTimeSeconds: data[OrderKeyMap.currentTimeSeconds],
+	} as Order;
 }
 
 export function encodeBusyTime(busyTime: BusyTime): Buffer {
-	return pack({
-		// @todo: derived
-		startTime: busyTime.startTime,
-		// @todo: derived
-		endTime: busyTime.endTime,
-		orderTimeSeconds: busyTime.orderTimeSeconds,
-		currentTimeSeconds: busyTime.currentTimeSeconds,
-		busyTimeSeconds: busyTime.busyTimeSeconds,
+	return packr.pack({
+		[BusyTimeKeyMap.startTime]: busyTime.startTime,
+		[BusyTimeKeyMap.endTime]: busyTime.endTime,
+		[BusyTimeKeyMap.orderTimeSeconds]: busyTime.orderTimeSeconds,
+		[BusyTimeKeyMap.currentTimeSeconds]: busyTime.currentTimeSeconds,
+		[BusyTimeKeyMap.busyTimeSeconds]: busyTime.busyTimeSeconds,
 	});
 }
 
 export function decodeBusyTime(buffer: Buffer): BusyTime {
-	const busyTime = unpack(buffer) as BusyTime;
+	const data = packr.unpack(buffer) as Record<string, unknown>;
 
 	return {
-		// @todo: derived
-		startTime: busyTime.startTime,
-		// @todo: derived
-		endTime: busyTime.endTime,
-		orderTimeSeconds: busyTime.orderTimeSeconds,
-		currentTimeSeconds: busyTime.currentTimeSeconds,
-		busyTimeSeconds: busyTime.busyTimeSeconds,
-	};
+		startTime: data[BusyTimeKeyMap.startTime],
+		endTime: data[BusyTimeKeyMap.endTime],
+		orderTimeSeconds: data[BusyTimeKeyMap.orderTimeSeconds],
+		currentTimeSeconds: data[BusyTimeKeyMap.currentTimeSeconds],
+		busyTimeSeconds: data[BusyTimeKeyMap.busyTimeSeconds],
+	} as BusyTime;
 }
