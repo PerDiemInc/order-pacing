@@ -2,8 +2,9 @@ import { expect } from "chai";
 import { describe, it } from "mocha";
 import {
 	minutesToSeconds,
-	scoreToDate,
+	secondsToDate,
 	secondsToMinutes,
+	timeStringToMinutes,
 	toSeconds,
 } from "../src/utils";
 
@@ -55,30 +56,30 @@ describe("toSeconds", () => {
 	});
 });
 
-describe("scoreToDate", () => {
-	it("should convert Redis score (seconds) to Date object", () => {
-		const score = 1704110400;
+describe("secondsToDate", () => {
+	it("should convert seconds to Date object", () => {
+		const seconds = 1704110400;
 		const expectedDate = new Date("2024-01-01T12:00:00Z");
-		expect(scoreToDate(score).getTime()).to.equal(expectedDate.getTime());
+		expect(secondsToDate(seconds).getTime()).to.equal(expectedDate.getTime());
 	});
 
-	it("should handle zero score", () => {
-		const score = 0;
+	it("should handle zero seconds", () => {
+		const seconds = 0;
 		const expectedDate = new Date(0);
-		expect(scoreToDate(score).getTime()).to.equal(expectedDate.getTime());
+		expect(secondsToDate(seconds).getTime()).to.equal(expectedDate.getTime());
 	});
 
-	it("should handle current time score", () => {
+	it("should handle current time seconds", () => {
 		const now = Date.now();
-		const score = Math.floor(now / 1000);
-		const result = scoreToDate(score);
+		const seconds = Math.floor(now / 1000);
+		const result = secondsToDate(seconds);
 		expect(Math.abs(result.getTime() - now)).to.be.lessThan(1000);
 	});
 
-	it("should handle negative scores", () => {
-		const score = -1000;
+	it("should handle negative seconds", () => {
+		const seconds = -1000;
 		const expectedDate = new Date(-1000 * 1000);
-		expect(scoreToDate(score).getTime()).to.equal(expectedDate.getTime());
+		expect(secondsToDate(seconds).getTime()).to.equal(expectedDate.getTime());
 	});
 });
 
@@ -123,5 +124,32 @@ describe("secondsToMinutes", () => {
 
 	it("should handle negative seconds", () => {
 		expect(secondsToMinutes(-60)).to.equal(-1);
+	});
+});
+
+describe("timeStringToMinutes", () => {
+	it("should convert time string to minutes", () => {
+		expect(timeStringToMinutes("00:00")).to.equal(0);
+		expect(timeStringToMinutes("01:00")).to.equal(60);
+		expect(timeStringToMinutes("12:30")).to.equal(750);
+		expect(timeStringToMinutes("23:59")).to.equal(1439);
+	});
+
+	it("should handle single digit hours and minutes", () => {
+		expect(timeStringToMinutes("1:5")).to.equal(65);
+		expect(timeStringToMinutes("9:9")).to.equal(549);
+	});
+
+	it("should handle midnight", () => {
+		expect(timeStringToMinutes("00:00")).to.equal(0);
+		expect(timeStringToMinutes("0:0")).to.equal(0);
+	});
+
+	it("should handle noon", () => {
+		expect(timeStringToMinutes("12:00")).to.equal(720);
+	});
+
+	it("should handle end of day", () => {
+		expect(timeStringToMinutes("23:59")).to.equal(1439);
 	});
 });
