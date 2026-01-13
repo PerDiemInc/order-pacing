@@ -52,25 +52,27 @@ export default class EngineRule {
 						if (!order.items || order.items.length === 0) {
 							return false;
 						}
-						const orderCategoryIds = order.items.map((item) => item.categoryId);
-						return orderCategoryIds.some((catId) =>
-							this.rule.categoryIds.includes(catId),
+
+						return order.items.some((item) =>
+							this.rule.categoryIds.includes(item.categoryId),
 						);
 					})
 				: orders;
 
 		const totalOrders = relevantOrders.length;
+
 		const totalItems = relevantOrders.reduce(
-			(sum, o) =>
-				sum +
-				(o.items?.reduce(
-					(itemSum, item) => itemSum + (item.quantity ?? 0),
+			(ordersSum, order) =>
+				ordersSum +
+				(order.items?.reduce(
+					(itemsSum, item) => itemsSum + (item.quantity ?? 1),
 					0,
 				) ?? 0),
 			0,
 		);
+
 		const totalPriceSum = relevantOrders.reduce(
-			(sum, o) => sum + (o.totalAmountCents ?? 0),
+			(ordersSum, order) => ordersSum + (order.totalAmountCents ?? 0),
 			0,
 		);
 
