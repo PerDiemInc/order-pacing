@@ -1,4 +1,4 @@
-export type { OrderSource, TimeframeCalculationMode } from "./Engine";
-export { Engine, ORDER_SOURCE, TIMEFRAME_MODE } from "./Engine";
+export { Engine } from "./engine/Engine";
+export type { OrderSource, TimeframeMode } from "./engine/types";
 export type { Logger } from "./logger";
 export { consoleLogger } from "./logger";
