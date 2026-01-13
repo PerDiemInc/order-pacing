@@ -14,7 +14,7 @@ import {
 	type BusyTime,
 	type InputOrder,
 	type Order,
-	type OrderSource,
+	OrderSource,
 	TimeframeMode,
 	type TimeWindow,
 } from "./types";
@@ -22,38 +22,38 @@ import {
 export const ORDERS_RETENTION_SECONDS = 604800; // 7 days in seconds
 
 type EngineParams = {
+	bucket: string;
 	redis: Redis;
 	logger?: Logger;
-	bucket: string;
-	rules: Rule[];
 	timeframeMode?: TimeframeMode;
 	timeZone?: string;
 };
 
 export class Engine {
-	private engineRules: EngineRules;
-	private logger: Logger;
+	private engineRules: EngineRules | undefined;
+
 	private redis: Redis;
-	private ordersKey: string;
-	private busyTimesKey: string;
+	private logger: Logger;
 	private timeframeMode: TimeframeMode;
 	private timeZone: string;
 
+	private ordersKey: string;
+	private busyTimesKey: string;
+
 	constructor({
+		bucket,
 		redis,
 		logger = noopLogger,
-		rules,
-		bucket,
 		timeframeMode = TimeframeMode.BEFORE_ONLY,
 		timeZone = "UTC",
 	}: EngineParams) {
-		this.engineRules = new EngineRules(rules);
-		this.logger = logger;
 		this.redis = redis;
-		this.ordersKey = `orders:${bucket}`;
-		this.busyTimesKey = `busytimes:${bucket}`;
+		this.logger = logger;
 		this.timeframeMode = timeframeMode;
 		this.timeZone = timeZone;
+
+		this.ordersKey = `orders:${bucket}`;
+		this.busyTimesKey = `busytimes:${bucket}`;
 	}
 
 	private static calculateTimeWindow({
@@ -104,7 +104,9 @@ export class Engine {
 			const value = entries[i] as Buffer;
 			const order = decodeOrder(value);
 
-			orders.push(order);
+			if (order.source === OrderSource.PERDIEM) {
+				orders.push(order);
+			}
 		}
 
 		return orders;
@@ -132,11 +134,11 @@ export class Engine {
 		await this.redis.zadd(this.busyTimesKey, busyTime.orderTimeSeconds, buffer);
 	}
 
-	public async add(inputOrder: InputOrder): Promise<void> {
-		if (!this.engineRules.hasRules()) {
-			this.logger.warn("No busy time rules set, skipping order validation");
-		}
+	public setRules(rules: Rule[]): void {
+		this.engineRules = new EngineRules(rules);
+	}
 
+	public async add(inputOrder: InputOrder): Promise<void> {
 		const orderTimeSeconds = toSeconds(inputOrder.orderTime);
 		const currentTimeSeconds = toSeconds(Date.now());
 
@@ -149,6 +151,16 @@ export class Engine {
 		});
 
 		await this.addOrder(order);
+
+		if (
+			!this.engineRules ||
+			!this.engineRules.hasRules() ||
+			order.source !== OrderSource.PERDIEM
+		) {
+			this.logger.warn("No busy time rules not set, skipping order validation");
+
+			return;
+		}
 
 		for (const engineRule of this.engineRules.getEngineRules()) {
 			if (!engineRule.doesApply(order.orderTime, this.timeZone)) {
