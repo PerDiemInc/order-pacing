@@ -2,7 +2,7 @@ import { getDay, getHours, getMinutes } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import type { Rule } from "../rules/types";
 import { timeStringToMinutes } from "../utils";
-import type { Order } from "./types";
+import type { Order, Threshold } from "./types";
 
 export default class EngineRule {
 	public readonly rule: Rule;
@@ -44,7 +44,9 @@ export default class EngineRule {
 		return true;
 	}
 
-	public exceedsThreshold(orders: Order[]): boolean {
+	public exceedsThreshold(orders: Order[]): Threshold | null {
+		const applicableCategoryIds: string[] = [];
+
 		const relevantOrders =
 			this.rule.categoryIds.length > 0
 				? orders.filter((order) => {
@@ -52,9 +54,11 @@ export default class EngineRule {
 							return false;
 						}
 
-						return order.items.some((item) =>
-							this.rule.categoryIds.includes(item.categoryId),
-						);
+						return order.items.some((item) => {
+							applicableCategoryIds.push(item.categoryId);
+
+							return this.rule.categoryIds.includes(item.categoryId);
+						});
 					})
 				: orders;
 
@@ -70,16 +74,50 @@ export default class EngineRule {
 			0,
 		);
 
-		const totalPriceSum = relevantOrders.reduce(
+		const totalAmount = relevantOrders.reduce(
 			(ordersSum, order) => ordersSum + (order.totalAmountCents ?? 0),
 			0,
 		);
 
-		return (
-			(this.rule.maxOrders != null && totalOrders >= this.rule.maxOrders) ||
-			(this.rule.maxItems != null && totalItems >= this.rule.maxItems) ||
-			(this.rule.maxAmountCents != null &&
-				totalPriceSum >= this.rule.maxAmountCents)
-		);
+		if (
+			this.rule.maxOrders &&
+			this.rule.maxOrders > 0 &&
+			totalOrders >= this.rule.maxOrders
+		) {
+			return {
+				type: "orders",
+				value: totalOrders,
+				limit: this.rule.maxOrders,
+				categoryIds: applicableCategoryIds,
+			};
+		}
+
+		if (
+			this.rule.maxItems &&
+			this.rule.maxItems > 0 &&
+			totalItems >= this.rule.maxItems
+		) {
+			return {
+				type: "items",
+				value: totalItems,
+				limit: this.rule.maxItems,
+				categoryIds: applicableCategoryIds,
+			};
+		}
+
+		if (
+			this.rule.maxAmountCents &&
+			this.rule.maxAmountCents > 0 &&
+			totalAmount >= this.rule.maxAmountCents
+		) {
+			return {
+				type: "amount",
+				value: totalAmount,
+				limit: this.rule.maxAmountCents,
+				categoryIds: applicableCategoryIds,
+			};
+		}
+
+		return null;
 	}
 }

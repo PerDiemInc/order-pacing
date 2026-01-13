@@ -177,20 +177,25 @@ export class Engine {
 
 			const ordersInWindow = await this.getOrdersInWindow(timeWindow);
 
-			if (engineRule.exceedsThreshold(ordersInWindow)) {
-				const busyTimeSeconds = minutesToSeconds(engineRule.rule.prepTime);
+			const threshold = engineRule.exceedsThreshold(ordersInWindow);
 
-				await this.addBusyTime({
-					startTime: secondsToDate(orderTimeSeconds - busyTimeSeconds),
-					endTime: secondsToDate(
-						orderTimeSeconds +
-							Math.max(0, orderTimeSeconds - currentTimeSeconds),
-					),
-					orderTimeSeconds,
-					currentTimeSeconds,
-					busyTimeSeconds,
-				});
+			if (!threshold) {
+				continue;
 			}
+
+			const busyTimeSeconds = minutesToSeconds(engineRule.rule.prepTime);
+			const endTimeSeconds =
+				orderTimeSeconds + Math.max(0, orderTimeSeconds - currentTimeSeconds);
+			const startTimeSeconds = endTimeSeconds - busyTimeSeconds;
+
+			await this.addBusyTime({
+				startTime: secondsToDate(startTimeSeconds),
+				endTime: secondsToDate(endTimeSeconds),
+				orderTimeSeconds,
+				currentTimeSeconds,
+				busyTimeSeconds,
+				threshold,
+			});
 		}
 	}
 

@@ -8,33 +8,41 @@ const packr = new Packr({
 });
 
 enum OrderSourceMap {
-	PERDIEM,
-	OTHER,
+	PERDIEM = "P",
+	OTHER = "O",
 }
 
 enum OrderItemKeyMap {
-	itemId,
-	categoryId,
-	quantity,
-	price,
+	itemId = "i",
+	categoryId = "c",
+	quantity = "q",
+	price = "p",
 }
 
 enum OrderKeyMap {
-	orderId,
-	items,
-	totalAmountCents,
-	source,
-	orderTime,
-	orderTimeSeconds,
-	currentTimeSeconds,
+	orderId = "id",
+	items = "is",
+	totalAmountCents = "t",
+	source = "s",
+	orderTime = "ot",
+	orderTimeSeconds = "ots",
+	currentTimeSeconds = "cts",
+}
+
+enum ThresholdKeyMap {
+	type = "t",
+	value = "v",
+	limit = "l",
+	categoryIds = "c",
 }
 
 enum BusyTimeKeyMap {
-	startTime,
-	endTime,
-	orderTimeSeconds,
-	currentTimeSeconds,
-	busyTimeSeconds,
+	startTime = "st",
+	endTime = "et",
+	orderTimeSeconds = "ots",
+	currentTimeSeconds = "cts",
+	busyTimeSeconds = "bts",
+	threshold = "t",
 }
 
 export function encodeOrder(order: Order): Buffer {
@@ -93,11 +101,19 @@ export function encodeBusyTime(busyTime: BusyTime): Buffer {
 		[BusyTimeKeyMap.orderTimeSeconds]: busyTime.orderTimeSeconds,
 		[BusyTimeKeyMap.currentTimeSeconds]: busyTime.currentTimeSeconds,
 		[BusyTimeKeyMap.busyTimeSeconds]: busyTime.busyTimeSeconds,
+		[BusyTimeKeyMap.threshold]: {
+			[ThresholdKeyMap.type]: busyTime.threshold.type,
+			[ThresholdKeyMap.value]: busyTime.threshold.value,
+			[ThresholdKeyMap.limit]: busyTime.threshold.limit,
+			[ThresholdKeyMap.categoryIds]: busyTime.threshold.categoryIds,
+		},
 	});
 }
 
 export function decodeBusyTime(buffer: Buffer): BusyTime {
 	const data = packr.unpack(buffer) as Record<string, unknown>;
+
+	const threshold = data[BusyTimeKeyMap.threshold] as Record<string, unknown>;
 
 	return {
 		startTime: data[BusyTimeKeyMap.startTime],
@@ -105,5 +121,11 @@ export function decodeBusyTime(buffer: Buffer): BusyTime {
 		orderTimeSeconds: data[BusyTimeKeyMap.orderTimeSeconds],
 		currentTimeSeconds: data[BusyTimeKeyMap.currentTimeSeconds],
 		busyTimeSeconds: data[BusyTimeKeyMap.busyTimeSeconds],
+		threshold: {
+			type: threshold[ThresholdKeyMap.type],
+			value: threshold[ThresholdKeyMap.value],
+			limit: threshold[ThresholdKeyMap.limit],
+			categoryIds: threshold[ThresholdKeyMap.categoryIds],
+		},
 	} as BusyTime;
 }
