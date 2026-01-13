@@ -182,7 +182,10 @@ export class Engine {
 
 				await this.addBusyTime({
 					startTime: scoreToDate(orderTimeSeconds - busyTimeSeconds),
-					endTime: scoreToDate(orderTimeSeconds),
+					endTime: scoreToDate(
+						orderTimeSeconds +
+							Math.max(0, orderTimeSeconds - currentTimeSeconds),
+					),
 					orderTimeSeconds,
 					currentTimeSeconds,
 					busyTimeSeconds,
