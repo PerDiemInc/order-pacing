@@ -13,7 +13,6 @@ export default class EngineRule {
 
 	public doesApply(time: Date, timeZone: string): boolean {
 		const zonedDate = toZonedTime(time, timeZone);
-
 		const dayOfWeek = getDay(zonedDate);
 
 		if (

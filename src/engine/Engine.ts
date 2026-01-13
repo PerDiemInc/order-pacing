@@ -91,7 +91,7 @@ export class Engine {
 	}
 
 	private async getOrdersInWindow(timeWindow: TimeWindow): Promise<Order[]> {
-		const entries = await this.redis.zrangebyscore(
+		const entries = await this.redis.zrangebyscoreBuffer(
 			this.ordersKey,
 			timeWindow.start,
 			timeWindow.end,
@@ -101,8 +101,8 @@ export class Engine {
 		const orders: Order[] = [];
 
 		for (let i = 0; i < entries.length; i += 2) {
-			const value = entries[i] as string;
-			const order = decodeOrder(Buffer.from(value));
+			const value = entries[i] as Buffer;
+			const order = decodeOrder(value);
 
 			orders.push(order);
 		}
@@ -182,7 +182,7 @@ export class Engine {
 
 		await this.cleanOldOrders(currentTimeSeconds);
 
-		const entries = await this.redis.zrange(
+		const entries = await this.redis.zrangeBuffer(
 			this.ordersKey,
 			0,
 			-1,
@@ -192,8 +192,8 @@ export class Engine {
 		const orders: Order[] = [];
 
 		for (let i = 0; i < entries.length; i += 2) {
-			const value = entries[i] as string;
-			const order = decodeOrder(Buffer.from(value));
+			const value = entries[i] as Buffer;
+			const order = decodeOrder(value);
 
 			orders.push(order);
 		}
@@ -206,7 +206,7 @@ export class Engine {
 
 		await this.cleanOldBusyTimes(currentTimeSeconds);
 
-		const entries = await this.redis.zrange(
+		const entries = await this.redis.zrangeBuffer(
 			this.busyTimesKey,
 			0,
 			-1,
@@ -216,8 +216,8 @@ export class Engine {
 		const busyTimes: BusyTime[] = [];
 
 		for (let i = 0; i < entries.length; i += 2) {
-			const value = entries[i] as string;
-			const busyTime = decodeBusyTime(Buffer.from(value));
+			const value = entries[i] as Buffer;
+			const busyTime = decodeBusyTime(value);
 
 			busyTimes.push(busyTime);
 		}
@@ -237,7 +237,7 @@ export class Engine {
 
 		await this.cleanOldOrders(currentTimeSeconds);
 
-		const entries = await this.redis.zrangebyscore(
+		const entries = await this.redis.zrangebyscoreBuffer(
 			this.ordersKey,
 			startTimeSeconds,
 			endTimeSeconds,
@@ -251,12 +251,14 @@ export class Engine {
 		}[] = [];
 
 		for (let i = 0; i < entries.length; i += 2) {
-			const value = entries[i] as string;
-			const score = parseInt(entries[i + 1] as string, 10);
-			const orderTime = scoreToDate(score);
-			const order = decodeOrder(Buffer.from(value));
+			const value = entries[i] as Buffer;
+			const order = decodeOrder(value);
 
-			orders.push({ orderId: order.orderId, orderTime, source: order.source });
+			orders.push({
+				orderId: order.orderId,
+				orderTime: order.orderTime,
+				source: order.source,
+			});
 		}
 
 		return orders.sort(
