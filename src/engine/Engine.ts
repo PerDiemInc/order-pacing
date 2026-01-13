@@ -8,7 +8,7 @@ import {
 } from "./../encoder";
 import { type Logger, noopLogger } from "../logger";
 import type { Rule } from "../rules/types";
-import { scoreToDate, toSeconds } from "../utils";
+import { secondsToDate, toSeconds } from "../utils";
 import EngineRules from "./EngineRules";
 import {
 	type BusyTime,
@@ -181,8 +181,8 @@ export class Engine {
 				const busyTimeSeconds = minutesToSeconds(engineRule.rule.prepTime);
 
 				await this.addBusyTime({
-					startTime: scoreToDate(orderTimeSeconds - busyTimeSeconds),
-					endTime: scoreToDate(
+					startTime: secondsToDate(orderTimeSeconds - busyTimeSeconds),
+					endTime: secondsToDate(
 						orderTimeSeconds +
 							Math.max(0, orderTimeSeconds - currentTimeSeconds),
 					),
