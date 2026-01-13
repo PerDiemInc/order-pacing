@@ -1,14 +1,14 @@
 import { minutesToSeconds } from "date-fns";
 import type Redis from "ioredis";
-import { type Logger, noopLogger } from "../logger";
-import type { Rule } from "../rules/types";
-import { scoreToDate, toSeconds } from "../utils";
 import {
 	decodeBusyTime,
 	decodeOrder,
 	encodeBusyTime,
 	encodeOrder,
-} from "./Encoder";
+} from "./../encoder";
+import { type Logger, noopLogger } from "../logger";
+import type { Rule } from "../rules/types";
+import { scoreToDate, toSeconds } from "../utils";
 import EngineRules from "./EngineRules";
 import {
 	type BusyTime,

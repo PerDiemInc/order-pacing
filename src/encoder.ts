@@ -1,5 +1,5 @@
 import { pack, unpack } from "msgpackr";
-import type { BusyTime, Order } from "./types";
+import type { BusyTime, Order } from "./engine/types";
 
 export function encodeOrder(order: Order): Buffer {
 	return pack({
