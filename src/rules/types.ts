@@ -1,6 +1,6 @@
 export interface Rule {
-	timeFrame: number;
-	prepTime: number;
+	timeFrameMinutes: number;
+	busyTimeMinutes: number;
 	categoryIds: string[];
 	weekDays: number[];
 	startTime?: string;
