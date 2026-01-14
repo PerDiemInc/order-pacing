@@ -3,14 +3,14 @@
 ## Installation
 
 ```bash
-npm install @perdieminc/busytime
+npm install @perdieminc/order-pacing
 ```
 
 ## Usage
 
 ```typescript
 import Redis from 'ioredis';
-import { Engine, TimeframeMode, OrderSource } from '@perdieminc/busytime';
+import { Engine, TimeframeMode, OrderSource } from '@perdieminc/order-pacing';
 
 const redis = new Redis({
   host: 'localhost',
