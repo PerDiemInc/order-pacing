@@ -66,7 +66,9 @@ export default class EngineRule {
 		for (const order of orders) {
 			if (order.items) {
 				for (const item of order.items) {
-					allOrdersCategoryIds.add(item.categoryId);
+					if (item.categoryId) {
+						allOrdersCategoryIds.add(item.categoryId);
+					}
 				}
 			}
 		}
@@ -83,14 +85,20 @@ export default class EngineRule {
 						}
 
 						return order.items.some((item) => {
+							if (!item.categoryId) {
+								return false;
+							}
+
 							const isMatchingCategory = this.rule.categoryIds.includes(
 								item.categoryId,
 							);
+
 							if (isMatchingCategory) {
 								applicableCategoryIds.add(item.categoryId);
 								applicableTotalAmountCents += item.totalAmountCents ?? 0;
 								applicableTotalItems += item.quantity ?? 1;
 							}
+
 							return isMatchingCategory;
 						});
 					})

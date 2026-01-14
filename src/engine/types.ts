@@ -17,9 +17,9 @@ export type TimeWindow = {
 
 interface OrderItem {
 	itemId: string;
-	categoryId: string;
 	quantity: number;
 	totalAmountCents: number;
+	categoryId: string | null;
 }
 
 export interface Order {

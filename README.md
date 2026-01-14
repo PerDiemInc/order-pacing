@@ -40,9 +40,9 @@ await engine.add({
   source: OrderSource.PERDIEM,
   items: [{
     itemId: 'item-1',
-    categoryId: 'cat-1',
     quantity: 2,
-    totalAmountCents: 2000
+    totalAmountCents: 2000,
+    categoryId: 'cat-1'
   }]
 });
 
@@ -98,9 +98,9 @@ await engine.add({
   source: OrderSource.PERDIEM, // or OrderSource.OTHER
   items: [{
     itemId: 'item-1',
-    categoryId: 'cat-1',
     quantity: 2,
-    totalAmountCents: 2000
+    totalAmountCents: 2000,
+    categoryId: 'cat-1'
   }]
 });
 ```
@@ -145,9 +145,9 @@ Returns an array of order entries:
     orderId: '123',
     items: [{
       itemId: 'item-1',
-      categoryId: 'cat-1',
       quantity: 2,
-      totalAmountCents: 2000
+      totalAmountCents: 2000,
+      categoryId: 'cat-1'
     }],
     totalAmountCents: 5000,
     source: OrderSource.PERDIEM, // or OrderSource.OTHER
