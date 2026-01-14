@@ -12,6 +12,9 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/@perdieminc/order-pacing
 
     steps:
       - name: Checkout code
@@ -36,7 +39,7 @@ jobs:
         run: npm test
 
       - name: Publish to NPM
-        run: npm publish --access public
+        run: npm publish
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

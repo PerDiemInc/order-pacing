@@ -34,8 +34,18 @@ The GitHub Actions workflow will automatically:
 
 ### Prerequisites
 
-- Trusted Publisher (OIDC) configured on npm for the `@perdieminc` organization
-- GitHub Actions environment `npm-publish` configured with the npm package URL
+**Configure Trusted Publisher on npm:**
+
+1. Log in to npm and navigate to your package: https://www.npmjs.com/package/@perdieminc/order-pacing
+2. Go to **Package Settings** → **Trusted Publishers**
+3. Click **Add Trusted Publisher** → **GitHub Actions**
+4. Configure:
+   - **Organization or user:** `PerDiemInc`
+   - **Repository:** `order-pacing` (or the actual repo name)
+   - **Workflow filename:** `.github/workflows/publish.yml`
+5. Click **Set up connection**
+
+This allows npm to accept publishes from your GitHub Actions workflow using OIDC authentication.
 
 ## Manual Publishing
 
