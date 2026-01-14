@@ -16,7 +16,7 @@ enum OrderItemKeyMap {
 	itemId = "i",
 	categoryId = "c",
 	quantity = "q",
-	price = "p",
+	totalAmountCents = "tac",
 }
 
 enum OrderKeyMap {
@@ -36,12 +36,20 @@ enum ThresholdKeyMap {
 	categoryIds = "c",
 }
 
+enum BusyTimeContextKeyMap {
+	totalAmountCents = "tac",
+	totalItems = "ti",
+	totalOrders = "to",
+	categoryIds = "c",
+}
+
 enum BusyTimeKeyMap {
 	startTime = "st",
 	endTime = "et",
 	orderTimeSeconds = "ots",
 	currentTimeSeconds = "cts",
 	busyTimeSeconds = "bts",
+	busyTimeContext = "btc",
 	threshold = "t",
 }
 
@@ -50,7 +58,7 @@ export function encodeOrder(order: Order): Buffer {
 		[OrderItemKeyMap.itemId]: item.itemId ?? "",
 		[OrderItemKeyMap.categoryId]: item.categoryId ?? "",
 		[OrderItemKeyMap.quantity]: item.quantity ?? 0,
-		[OrderItemKeyMap.price]: item.price ?? 0,
+		[OrderItemKeyMap.totalAmountCents]: item.totalAmountCents ?? 0,
 	}));
 
 	return packr.pack({
@@ -76,7 +84,7 @@ export function decodeOrder(buffer: Buffer): Order {
 			itemId: item[OrderItemKeyMap.itemId],
 			categoryId: item[OrderItemKeyMap.categoryId],
 			quantity: item[OrderItemKeyMap.quantity],
-			price: item[OrderItemKeyMap.price],
+			totalAmountCents: item[OrderItemKeyMap.totalAmountCents],
 		}),
 	);
 
@@ -101,11 +109,21 @@ export function encodeBusyTime(busyTime: BusyTime): Buffer {
 		[BusyTimeKeyMap.orderTimeSeconds]: busyTime.orderTimeSeconds,
 		[BusyTimeKeyMap.currentTimeSeconds]: busyTime.currentTimeSeconds,
 		[BusyTimeKeyMap.busyTimeSeconds]: busyTime.busyTimeSeconds,
+		[BusyTimeKeyMap.busyTimeContext]: {
+			[BusyTimeContextKeyMap.totalAmountCents]:
+				busyTime.busyTimeContext.totalAmountCents ?? 0,
+			[BusyTimeContextKeyMap.totalItems]:
+				busyTime.busyTimeContext.totalItems ?? 0,
+			[BusyTimeContextKeyMap.totalOrders]:
+				busyTime.busyTimeContext.totalOrders ?? 0,
+			[BusyTimeContextKeyMap.categoryIds]:
+				busyTime.busyTimeContext.categoryIds ?? [],
+		},
 		[BusyTimeKeyMap.threshold]: {
 			[ThresholdKeyMap.type]: busyTime.threshold.type,
-			[ThresholdKeyMap.value]: busyTime.threshold.value,
-			[ThresholdKeyMap.limit]: busyTime.threshold.limit,
-			[ThresholdKeyMap.categoryIds]: busyTime.threshold.categoryIds,
+			[ThresholdKeyMap.value]: busyTime.threshold.value ?? 0,
+			[ThresholdKeyMap.limit]: busyTime.threshold.limit ?? 0,
+			[ThresholdKeyMap.categoryIds]: busyTime.threshold.categoryIds ?? [],
 		},
 	});
 }
@@ -113,6 +131,10 @@ export function encodeBusyTime(busyTime: BusyTime): Buffer {
 export function decodeBusyTime(buffer: Buffer): BusyTime {
 	const data = packr.unpack(buffer) as Record<string, unknown>;
 
+	const busyTimeContext = data[BusyTimeKeyMap.busyTimeContext] as Record<
+		string,
+		unknown
+	>;
 	const threshold = data[BusyTimeKeyMap.threshold] as Record<string, unknown>;
 
 	return {
@@ -121,6 +143,12 @@ export function decodeBusyTime(buffer: Buffer): BusyTime {
 		orderTimeSeconds: data[BusyTimeKeyMap.orderTimeSeconds],
 		currentTimeSeconds: data[BusyTimeKeyMap.currentTimeSeconds],
 		busyTimeSeconds: data[BusyTimeKeyMap.busyTimeSeconds],
+		busyTimeContext: {
+			totalAmountCents: busyTimeContext[BusyTimeContextKeyMap.totalAmountCents],
+			totalItems: busyTimeContext[BusyTimeContextKeyMap.totalItems],
+			totalOrders: busyTimeContext[BusyTimeContextKeyMap.totalOrders],
+			categoryIds: busyTimeContext[BusyTimeContextKeyMap.categoryIds],
+		},
 		threshold: {
 			type: threshold[ThresholdKeyMap.type],
 			value: threshold[ThresholdKeyMap.value],

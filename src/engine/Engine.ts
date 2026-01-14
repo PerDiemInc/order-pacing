@@ -165,7 +165,7 @@ export class Engine {
 		}
 
 		for (const engineRule of this.engineRules.getEngineRules()) {
-			if (!engineRule.doesApply(order.orderTime, this.timeZone)) {
+			if (!engineRule.applyCheck(order.orderTime, this.timeZone)) {
 				continue;
 			}
 
@@ -177,15 +177,17 @@ export class Engine {
 
 			const ordersInWindow = await this.getOrdersInWindow(timeWindow);
 
-			const threshold = engineRule.exceedsThreshold(ordersInWindow);
+			const thresholdInfo = engineRule.thresholdCheck(ordersInWindow);
 
-			if (!threshold) {
+			if (!thresholdInfo) {
 				continue;
 			}
 
 			const busyTimeSeconds = minutesToSeconds(engineRule.rule.prepTime);
-			const endTimeSeconds =
-				orderTimeSeconds + Math.max(0, orderTimeSeconds - currentTimeSeconds);
+			const endTimeSeconds = Math.max(
+				orderTimeSeconds,
+				currentTimeSeconds + busyTimeSeconds,
+			);
 			const startTimeSeconds = endTimeSeconds - busyTimeSeconds;
 
 			await this.addBusyTime({
@@ -194,7 +196,8 @@ export class Engine {
 				orderTimeSeconds,
 				currentTimeSeconds,
 				busyTimeSeconds,
-				threshold,
+				threshold: thresholdInfo.threshold,
+				busyTimeContext: thresholdInfo.busyTimeContext,
 			});
 		}
 	}

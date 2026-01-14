@@ -2,7 +2,7 @@ import { getDay, getHours, getMinutes } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import type { Rule } from "../rules/types";
 import { timeStringToMinutes } from "../utils";
-import type { Order, Threshold } from "./types";
+import type { BusyTimeContext, Order, Threshold } from "./types";
 
 export default class EngineRule {
 	public readonly rule: Rule;
@@ -11,7 +11,7 @@ export default class EngineRule {
 		this.rule = rule;
 	}
 
-	public doesApply(time: Date, timeZone: string): boolean {
+	public applyCheck(time: Date, timeZone: string): boolean {
 		const zonedDate = toZonedTime(time, timeZone);
 		const dayOfWeek = getDay(zonedDate);
 
@@ -44,27 +44,10 @@ export default class EngineRule {
 		return true;
 	}
 
-	public exceedsThreshold(orders: Order[]): Threshold | null {
-		const applicableCategoryIds: string[] = [];
-
-		const relevantOrders =
-			this.rule.categoryIds.length > 0
-				? orders.filter((order) => {
-						if (!order.items || order.items.length === 0) {
-							return false;
-						}
-
-						return order.items.some((item) => {
-							applicableCategoryIds.push(item.categoryId);
-
-							return this.rule.categoryIds.includes(item.categoryId);
-						});
-					})
-				: orders;
-
-		const totalOrders = relevantOrders.length;
-
-		const totalItems = relevantOrders.reduce(
+	public thresholdCheck(
+		orders: Order[],
+	): { threshold: Threshold; busyTimeContext: BusyTimeContext } | null {
+		const allOrdersTotalItems = orders.reduce(
 			(ordersSum, order) =>
 				ordersSum +
 				(order.items?.reduce(
@@ -74,10 +57,56 @@ export default class EngineRule {
 			0,
 		);
 
-		const totalAmount = relevantOrders.reduce(
+		const allOrdersTotalAmountCents = orders.reduce(
 			(ordersSum, order) => ordersSum + (order.totalAmountCents ?? 0),
 			0,
 		);
+
+		const allOrdersCategoryIds = new Set<string>();
+		for (const order of orders) {
+			if (order.items) {
+				for (const item of order.items) {
+					allOrdersCategoryIds.add(item.categoryId);
+				}
+			}
+		}
+
+		const applicableCategoryIds = new Set<string>();
+		let applicableTotalAmountCents = 0;
+		let applicableTotalItems = 0;
+
+		const relevantOrders =
+			this.rule.categoryIds.length > 0
+				? orders.filter((order) => {
+						if (!order.items || order.items.length === 0) {
+							return false;
+						}
+
+						return order.items.some((item) => {
+							const isMatchingCategory = this.rule.categoryIds.includes(
+								item.categoryId,
+							);
+							if (isMatchingCategory) {
+								applicableCategoryIds.add(item.categoryId);
+								applicableTotalAmountCents += item.totalAmountCents ?? 0;
+								applicableTotalItems += item.quantity ?? 1;
+							}
+							return isMatchingCategory;
+						});
+					})
+				: orders;
+
+		const totalOrders = relevantOrders.length;
+
+		const totalItems =
+			this.rule.categoryIds.length > 0
+				? applicableTotalItems
+				: allOrdersTotalItems;
+
+		const totalAmount =
+			this.rule.categoryIds.length > 0
+				? applicableTotalAmountCents
+				: allOrdersTotalAmountCents;
 
 		if (
 			this.rule.maxOrders &&
@@ -85,10 +114,18 @@ export default class EngineRule {
 			totalOrders >= this.rule.maxOrders
 		) {
 			return {
-				type: "orders",
-				value: totalOrders,
-				limit: this.rule.maxOrders,
-				categoryIds: applicableCategoryIds,
+				threshold: {
+					type: "orders",
+					value: totalOrders,
+					limit: this.rule.maxOrders,
+					categoryIds: Array.from(applicableCategoryIds),
+				},
+				busyTimeContext: {
+					totalAmountCents: allOrdersTotalAmountCents,
+					totalItems: allOrdersTotalItems,
+					totalOrders: orders.length,
+					categoryIds: Array.from(allOrdersCategoryIds),
+				},
 			};
 		}
 
@@ -98,10 +135,18 @@ export default class EngineRule {
 			totalItems >= this.rule.maxItems
 		) {
 			return {
-				type: "items",
-				value: totalItems,
-				limit: this.rule.maxItems,
-				categoryIds: applicableCategoryIds,
+				threshold: {
+					type: "items",
+					value: totalItems,
+					limit: this.rule.maxItems,
+					categoryIds: Array.from(applicableCategoryIds),
+				},
+				busyTimeContext: {
+					totalAmountCents: allOrdersTotalAmountCents,
+					totalItems: allOrdersTotalItems,
+					totalOrders: orders.length,
+					categoryIds: Array.from(allOrdersCategoryIds),
+				},
 			};
 		}
 
@@ -111,10 +156,18 @@ export default class EngineRule {
 			totalAmount >= this.rule.maxAmountCents
 		) {
 			return {
-				type: "amount",
-				value: totalAmount,
-				limit: this.rule.maxAmountCents,
-				categoryIds: applicableCategoryIds,
+				threshold: {
+					type: "amount",
+					value: totalAmount,
+					limit: this.rule.maxAmountCents,
+					categoryIds: Array.from(applicableCategoryIds),
+				},
+				busyTimeContext: {
+					totalAmountCents: allOrdersTotalAmountCents,
+					totalItems: allOrdersTotalItems,
+					totalOrders: orders.length,
+					categoryIds: Array.from(allOrdersCategoryIds),
+				},
 			};
 		}
 
