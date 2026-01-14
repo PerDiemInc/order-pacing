@@ -13,16 +13,16 @@ enum OrderSourceMap {
 }
 
 enum OrderItemKeyMap {
-	itemId = "i",
-	categoryId = "c",
+	itemId = "id",
 	quantity = "q",
-	totalAmountCents = "tac",
+	totalAmountCents = "ta",
+	categoryId = "c",
 }
 
 enum OrderKeyMap {
 	orderId = "id",
 	items = "is",
-	totalAmountCents = "t",
+	totalAmountCents = "ta",
 	source = "s",
 	orderTime = "ot",
 	orderTimeSeconds = "ots",
@@ -37,7 +37,7 @@ enum ThresholdKeyMap {
 }
 
 enum BusyTimeContextKeyMap {
-	totalAmountCents = "tac",
+	totalAmountCents = "ta",
 	totalItems = "ti",
 	totalOrders = "to",
 	categoryIds = "c",
@@ -55,14 +55,14 @@ enum BusyTimeKeyMap {
 
 export function encodeOrder(order: Order): Buffer {
 	const encodedItems = (order.items || []).map((item) => ({
-		[OrderItemKeyMap.itemId]: item.itemId ?? "",
-		[OrderItemKeyMap.categoryId]: item.categoryId ?? "",
+		[OrderItemKeyMap.itemId]: item.itemId,
 		[OrderItemKeyMap.quantity]: item.quantity ?? 0,
 		[OrderItemKeyMap.totalAmountCents]: item.totalAmountCents ?? 0,
+		[OrderItemKeyMap.categoryId]: item.categoryId ?? null,
 	}));
 
 	return packr.pack({
-		[OrderKeyMap.orderId]: order.orderId ?? "",
+		[OrderKeyMap.orderId]: order.orderId,
 		[OrderKeyMap.items]: encodedItems,
 		[OrderKeyMap.totalAmountCents]: order.totalAmountCents ?? 0,
 		[OrderKeyMap.source]:
@@ -82,9 +82,9 @@ export function decodeOrder(buffer: Buffer): Order {
 		data[OrderKeyMap.items] || [],
 		(item: Record<string, unknown>) => ({
 			itemId: item[OrderItemKeyMap.itemId],
-			categoryId: item[OrderItemKeyMap.categoryId],
 			quantity: item[OrderItemKeyMap.quantity],
 			totalAmountCents: item[OrderItemKeyMap.totalAmountCents],
+			categoryId: item[OrderItemKeyMap.categoryId],
 		}),
 	);
 
