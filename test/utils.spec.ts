@@ -11,32 +11,25 @@ import {
 describe("toSeconds", () => {
 	it("should convert Date object to seconds", () => {
 		const date = new Date("2024-01-01T12:00:00Z");
-		const expectedSeconds = Math.floor(date.getTime() / 1000);
-		expect(toSeconds(date)).to.equal(expectedSeconds);
+		expect(toSeconds(date)).to.equal(Math.floor(date.getTime() / 1000));
 	});
 
 	it("should convert timestamp number to seconds", () => {
-		const timestamp = 1704110400000;
-		const expectedSeconds = 1704110400;
-		expect(toSeconds(timestamp)).to.equal(expectedSeconds);
+		expect(toSeconds(1704110400000)).to.equal(1704110400);
 	});
 
 	it("should handle current time", () => {
 		const now = new Date();
-		const expectedSeconds = Math.floor(now.getTime() / 1000);
-		expect(toSeconds(now)).to.equal(expectedSeconds);
+		expect(toSeconds(now)).to.equal(Math.floor(now.getTime() / 1000));
 	});
 
 	it("should handle Date.now() directly", () => {
 		const now = Date.now();
-		const expectedSeconds = Math.floor(now / 1000);
-		expect(toSeconds(now)).to.equal(expectedSeconds);
+		expect(toSeconds(now)).to.equal(Math.floor(now / 1000));
 	});
 
 	it("should floor fractional seconds correctly", () => {
-		const timestamp = 1704110400123;
-		const expectedSeconds = 1704110400;
-		expect(toSeconds(timestamp)).to.equal(expectedSeconds);
+		expect(toSeconds(1704110400123)).to.equal(1704110400);
 	});
 
 	it("should handle zero timestamp", () => {
@@ -45,28 +38,23 @@ describe("toSeconds", () => {
 	});
 
 	it("should handle negative timestamps", () => {
-		const negativeTimestamp = -1000;
-		expect(toSeconds(negativeTimestamp)).to.equal(-1);
+		expect(toSeconds(-1000)).to.equal(-1);
 	});
 
 	it("should handle very large timestamps", () => {
-		const largeTimestamp = 9999999999999;
-		const expectedSeconds = 9999999999;
-		expect(toSeconds(largeTimestamp)).to.equal(expectedSeconds);
+		expect(toSeconds(9999999999999)).to.equal(9999999999);
 	});
 });
 
 describe("secondsToDate", () => {
 	it("should convert seconds to Date object", () => {
 		const seconds = 1704110400;
-		const expectedDate = new Date("2024-01-01T12:00:00Z");
-		expect(secondsToDate(seconds).getTime()).to.equal(expectedDate.getTime());
+		const expected = new Date("2024-01-01T12:00:00Z");
+		expect(secondsToDate(seconds).getTime()).to.equal(expected.getTime());
 	});
 
 	it("should handle zero seconds", () => {
-		const seconds = 0;
-		const expectedDate = new Date(0);
-		expect(secondsToDate(seconds).getTime()).to.equal(expectedDate.getTime());
+		expect(secondsToDate(0).getTime()).to.equal(new Date(0).getTime());
 	});
 
 	it("should handle current time seconds", () => {
@@ -77,9 +65,9 @@ describe("secondsToDate", () => {
 	});
 
 	it("should handle negative seconds", () => {
-		const seconds = -1000;
-		const expectedDate = new Date(-1000 * 1000);
-		expect(secondsToDate(seconds).getTime()).to.equal(expectedDate.getTime());
+		expect(secondsToDate(-1000).getTime()).to.equal(
+			new Date(-1000 * 1000).getTime(),
+		);
 	});
 });
 

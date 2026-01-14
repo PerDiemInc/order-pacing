@@ -19,7 +19,7 @@ interface OrderItem {
 	itemId: string;
 	categoryId: string;
 	quantity: number;
-	price: number;
+	totalAmountCents: number;
 }
 
 export interface Order {
@@ -35,10 +35,26 @@ export interface Order {
 export interface InputOrder
 	extends Omit<Order, "orderTimeSeconds" | "currentTimeSeconds"> {}
 
+export interface Threshold {
+	type: "orders" | "items" | "amount";
+	value: number;
+	limit: number;
+	categoryIds: string[];
+}
+
+export interface BusyTimeContext {
+	totalAmountCents: number;
+	totalItems: number;
+	totalOrders: number;
+	categoryIds: string[];
+}
+
 export interface BusyTime {
 	startTime: Date;
 	endTime: Date;
 	orderTimeSeconds: number;
 	currentTimeSeconds: number;
 	busyTimeSeconds: number;
+	busyTimeContext: BusyTimeContext;
+	threshold: Threshold;
 }

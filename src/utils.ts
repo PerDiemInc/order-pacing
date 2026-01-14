@@ -4,8 +4,8 @@ export function toSeconds(date: Date | number): number {
 	return Math.floor(milliseconds / 1000);
 }
 
-export function secondsToDate(score: number): Date {
-	return new Date(score * 1000);
+export function secondsToDate(seconds: number): Date {
+	return new Date(seconds * 1000);
 }
 
 export function minutesToSeconds(minutes: number): number {

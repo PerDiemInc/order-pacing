@@ -1,5 +1,5 @@
-import type { RuleValidator } from "../types";
 import { timeStringToMinutes } from "../../utils";
+import type { RuleValidator } from "../types";
 
 export const validateTimeRange: RuleValidator = (rule) => {
 	if (rule.startTime !== undefined && rule.endTime !== undefined) {
