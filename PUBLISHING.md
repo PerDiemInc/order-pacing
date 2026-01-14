@@ -1,45 +1,18 @@
 # Publishing to npm
 
-This guide explains how to publish this package to the public npm registry.
+This package uses automated publishing via GitHub Actions. The workflow automatically publishes to npm and creates a GitHub Release when you push a version tag.
 
-## Prerequisites
+## Automated Publishing (Recommended)
 
-1. **npm account** with access to the `@perdieminc` organization
-2. **Authenticate with npm**:
+The package is automatically published when you push a version tag. The workflow:
 
-```bash
-npm login
-```
+1. Runs when you push a version tag (e.g., `v0.0.4`, `v0.1.0`)
+2. Publishes the package to npm registry using Trusted Publisher (OIDC)
+3. Creates a GitHub Release with auto-generated release notes
 
-Or use an automation token:
+### How to Publish
 
-```bash
-npm config set //registry.npmjs.org/:_authToken YOUR_NPM_TOKEN
-```
-
-## Publishing
-
-1. **Build the package**:
-
-```bash
-npm run build
-```
-
-2. **Verify the build**:
-
-```bash
-ls -la lib/
-```
-
-Make sure all `.js` and `.d.ts` files are present.
-
-3. **Run tests**:
-
-```bash
-npm test
-```
-
-4. **Update version** (if needed):
+1. **Update version and create tag**:
 
 ```bash
 npm version patch  # for bug fixes
@@ -47,10 +20,43 @@ npm version minor  # for new features
 npm version major  # for breaking changes
 ```
 
-5. **Publish to npm**:
+2. **Push the tag**:
 
 ```bash
-npm publish
+git push origin master --follow-tags
+```
+
+The GitHub Actions workflow will automatically:
+- Build the package
+- Run tests
+- Publish to npm
+- Create a GitHub Release
+
+### Prerequisites
+
+- Trusted Publisher (OIDC) configured on npm for the `@perdieminc` organization
+- GitHub Actions environment `npm-publish` configured with the npm package URL
+
+## Manual Publishing
+
+If you need to publish manually:
+
+1. **Build the package**:
+
+```bash
+npm run build
+```
+
+2. **Run tests**:
+
+```bash
+npm test
+```
+
+3. **Publish to npm**:
+
+```bash
+npm publish --access public
 ```
 
 ## Installing the Package
