@@ -1,4 +1,4 @@
-# BusyTime Engine
+# Order Pacing Engine
 
 ## Installation
 
@@ -21,18 +21,17 @@ const engine = new Engine({
   redis,
   bucket: 'storeId:locationId',
   timeframeMode: TimeframeMode.BEFORE_ONLY,
-  timeZone: 'UTC'
+  timeZone: 'UTC',
+  rules: [{
+    timeFrameMinutes: 30,
+    busyTimeMinutes: 15,
+    categoryIds: [],
+    weekDays: [],
+    maxOrders: 10,
+    maxItems: 100,
+    maxAmountCents: 100000
+  }]
 });
-
-engine.setRules([{
-  timeFrame: 30,
-  prepTime: 15,
-  categoryIds: [],
-  weekDays: [],
-  maxOrders: 10,
-  maxItems: 100,
-  maxAmountCents: 100000
-}]);
 
 await engine.add({
   orderId: '123',
@@ -58,7 +57,7 @@ const stats = await engine.getOrdersStats(
 
 ## API
 
-### `new Engine({ redis, bucket, timeframeMode?, timeZone?, logger? })`
+### `new Engine({ redis, bucket, timeframeMode?, timeZone?, rules?, logger? })`
 
 Creates a new Engine instance.
 
@@ -70,27 +69,22 @@ Creates a new Engine instance.
   - `TimeframeMode.AFTER_ONLY`: Look forward from order time
   - `TimeframeMode.BEFORE_AND_AFTER`: Look both before and after order time (full window)
 - `timeZone`: Optional timezone string (defaults to `'UTC'`)
+- `rules`: Optional array of rules (defaults to `[]`). Rules determine when to apply busy time based on order volume in a time window:
+  ```typescript
+  rules: [{
+    timeFrameMinutes: 30,        // Time window in minutes
+    busyTimeMinutes: 15,         // Busy time to apply in minutes
+    categoryIds: [],      // Optional: Filter by category IDs (empty array = all categories)
+    weekDays: [],         // Optional: Filter by week days 0-6 (empty array = all days)
+    startTime: '09:00',   // Optional: Start time for rule (HH:mm format)
+    endTime: '17:00',     // Optional: End time for rule (HH:mm format)
+    maxOrders: 10,        // Optional: Max orders threshold
+    maxItems: 100,        // Optional: Max items threshold
+    maxAmountCents: 100000 // Optional: Max total amount in cents threshold
+  }]
+  ```
+  At least one threshold (`maxOrders`, `maxItems`, or `maxAmountCents`) must be set. When any threshold is exceeded within the time window, the busy time is applied. Multiple rules can be set to handle different scenarios.
 - `logger`: Optional logger instance (defaults to noop logger)
-
-### `setRules(rules)`
-
-Defines the busy time rules for the bucket. Rules determine when to apply busy time based on order volume in a time window.
-
-```typescript
-engine.setRules([{
-  timeFrame: 30,        // Time window in minutes
-  prepTime: 15,         // Busy time to apply in minutes
-  categoryIds: [],      // Optional: Filter by category IDs (empty array = all categories)
-  weekDays: [],         // Optional: Filter by week days 0-6 (empty array = all days)
-  startTime: '09:00',   // Optional: Start time for rule (HH:mm format)
-  endTime: '17:00',     // Optional: End time for rule (HH:mm format)
-  maxOrders: 10,        // Optional: Max orders threshold
-  maxItems: 100,        // Optional: Max items threshold
-  maxAmountCents: 100000 // Optional: Max total amount in cents threshold
-}]);
-```
-
-At least one threshold (`maxOrders`, `maxItems`, or `maxAmountCents`) must be set. When any threshold is exceeded within the time window, the busy time is applied. Multiple rules can be set to handle different scenarios.
 
 ### `add(inputOrder)`
 
@@ -125,11 +119,17 @@ Returns an array of busy time entries:
     orderTimeSeconds: number,     // Order time in seconds
     currentTimeSeconds: number,   // Current time in seconds when busy time was created
     busyTimeSeconds: number,      // Duration in seconds
+    busyTimeContext: {
+      totalAmountCents: number,   // Total amount in cents from all orders in the time window
+      totalItems: number,         // Total items from all orders in the time window
+      totalOrders: number,        // Total number of orders in the time window
+      categoryIds: string[]       // All category IDs from all orders in the time window
+    },
     threshold: {
       type: 'orders' | 'items' | 'amount', // Type of threshold that was exceeded
       value: number,              // Actual value that exceeded the threshold
       limit: number,              // Threshold limit that was exceeded
-      categoryIds: string[]       // Category IDs that were involved
+      categoryIds: string[]       // Category IDs that were involved in the threshold
     }
   }
 ]

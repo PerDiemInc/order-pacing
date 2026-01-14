@@ -27,10 +27,11 @@ type EngineParams = {
 	logger?: Logger;
 	timeframeMode?: TimeframeMode;
 	timeZone?: string;
+	rules?: Rule[];
 };
 
 export class Engine {
-	private engineRules: EngineRules | undefined;
+	private engineRules: EngineRules;
 
 	private redis: Redis;
 	private logger: Logger;
@@ -46,11 +47,13 @@ export class Engine {
 		logger = noopLogger,
 		timeframeMode = TimeframeMode.BEFORE_ONLY,
 		timeZone = "UTC",
+		rules = [],
 	}: EngineParams) {
 		this.redis = redis;
 		this.logger = logger;
 		this.timeframeMode = timeframeMode;
 		this.timeZone = timeZone;
+		this.engineRules = new EngineRules(rules);
 
 		this.ordersKey = `orders:${bucket}`;
 		this.busyTimesKey = `busytimes:${bucket}`;
@@ -134,10 +137,6 @@ export class Engine {
 		await this.redis.zadd(this.busyTimesKey, busyTime.orderTimeSeconds, buffer);
 	}
 
-	public setRules(rules: Rule[]): void {
-		this.engineRules = new EngineRules(rules);
-	}
-
 	public async add(inputOrder: InputOrder): Promise<void> {
 		const orderTimeSeconds = toSeconds(inputOrder.orderTime);
 		const currentTimeSeconds = toSeconds(Date.now());
@@ -171,7 +170,7 @@ export class Engine {
 
 			const timeWindow = Engine.calculateTimeWindow({
 				orderTimeSeconds,
-				timeFrameSeconds: minutesToSeconds(engineRule.rule.timeFrame),
+				timeFrameSeconds: minutesToSeconds(engineRule.rule.timeFrameMinutes),
 				timeframeMode: this.timeframeMode,
 			});
 
@@ -183,7 +182,7 @@ export class Engine {
 				continue;
 			}
 
-			const busyTimeSeconds = minutesToSeconds(engineRule.rule.prepTime);
+			const busyTimeSeconds = minutesToSeconds(engineRule.rule.busyTimeMinutes);
 			const endTimeSeconds = Math.max(
 				orderTimeSeconds,
 				currentTimeSeconds + busyTimeSeconds,
