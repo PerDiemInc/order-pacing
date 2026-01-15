@@ -6,8 +6,8 @@ export default class EngineRules {
 	private rules: Rule[] = [];
 
 	constructor(rules: Rule[]) {
-		if (!rules || rules.length === 0) {
-			throw new Error("At least one busy time rule must be provided");
+		if (!Array.isArray(rules)) {
+			return;
 		}
 
 		for (const rule of rules) {
