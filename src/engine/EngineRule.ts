@@ -84,22 +84,20 @@ export default class EngineRule {
 							return false;
 						}
 
-						return order.items.some((item) => {
-							if (!item.categoryId) {
-								return false;
-							}
+						let hasMatchingCategory = false;
 
-							const isMatchingCategory = this.rule.categoryIds.includes(
-								item.categoryId,
-							);
-
-							if (isMatchingCategory) {
+						for (const item of order.items) {
+							if (
+								item.categoryId &&
+								this.rule.categoryIds.includes(item.categoryId)
+							) {
+								hasMatchingCategory = true;
 								applicableTotalAmountCents += item.totalAmountCents ?? 0;
 								applicableTotalItems += item.quantity ?? 1;
 							}
+						}
 
-							return isMatchingCategory;
-						});
+						return hasMatchingCategory;
 					})
 				: orders;
 
