@@ -1,6 +1,10 @@
 import { minutesToSeconds } from "date-fns";
 import type Redis from "ioredis";
 import {
+	BUSY_TIMES_RETENTION_SECONDS,
+	ORDERS_RETENTION_SECONDS,
+} from "../constants";
+import {
 	decodeBusyTime,
 	decodeOrder,
 	encodeBusyTime,
@@ -18,8 +22,6 @@ import {
 	TimeframeMode,
 	type TimeWindow,
 } from "./types";
-
-export const ORDERS_RETENTION_SECONDS = 604800; // 7 days in seconds
 
 type EngineParams = {
 	bucket: string;
@@ -122,7 +124,11 @@ export class Engine {
 	}
 
 	private async cleanOldBusyTimes(currentTimeSeconds: number): Promise<void> {
-		await this.redis.zremrangebyscore(this.busyTimesKey, 0, currentTimeSeconds);
+		await this.redis.zremrangebyscore(
+			this.busyTimesKey,
+			0,
+			currentTimeSeconds - BUSY_TIMES_RETENTION_SECONDS,
+		);
 	}
 
 	private async addOrder(order: Order): Promise<void> {
