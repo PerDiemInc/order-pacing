@@ -63,6 +63,7 @@ export default class EngineRule {
 		);
 
 		const allOrdersCategoryIds = new Set<string>();
+
 		for (const order of orders) {
 			if (order.items) {
 				for (const item of order.items) {
@@ -73,7 +74,6 @@ export default class EngineRule {
 			}
 		}
 
-		const applicableCategoryIds = new Set<string>();
 		let applicableTotalAmountCents = 0;
 		let applicableTotalItems = 0;
 
@@ -94,7 +94,6 @@ export default class EngineRule {
 							);
 
 							if (isMatchingCategory) {
-								applicableCategoryIds.add(item.categoryId);
 								applicableTotalAmountCents += item.totalAmountCents ?? 0;
 								applicableTotalItems += item.quantity ?? 1;
 							}
@@ -126,7 +125,7 @@ export default class EngineRule {
 					type: "orders",
 					value: totalOrders,
 					limit: this.rule.maxOrders,
-					categoryIds: Array.from(applicableCategoryIds),
+					categoryIds: this.rule.categoryIds,
 				},
 				busyTimeContext: {
 					totalAmountCents: allOrdersTotalAmountCents,
@@ -147,7 +146,7 @@ export default class EngineRule {
 					type: "items",
 					value: totalItems,
 					limit: this.rule.maxItems,
-					categoryIds: Array.from(applicableCategoryIds),
+					categoryIds: this.rule.categoryIds,
 				},
 				busyTimeContext: {
 					totalAmountCents: allOrdersTotalAmountCents,
@@ -168,7 +167,7 @@ export default class EngineRule {
 					type: "amount",
 					value: totalAmount,
 					limit: this.rule.maxAmountCents,
-					categoryIds: Array.from(applicableCategoryIds),
+					categoryIds: this.rule.categoryIds,
 				},
 				busyTimeContext: {
 					totalAmountCents: allOrdersTotalAmountCents,
