@@ -1,27 +1,13 @@
+import { randomUUID } from "node:crypto";
 import { minutesToSeconds } from "date-fns";
 import type Redis from "ioredis";
-import {
-	BUSY_TIMES_RETENTION_SECONDS,
-	ORDERS_RETENTION_SECONDS,
-} from "../constants";
-import {
-	decodeBusyTime,
-	decodeOrder,
-	encodeBusyTime,
-	encodeOrder,
-} from "./../encoder";
+import { BUSY_TIMES_RETENTION_SECONDS, ORDERS_RETENTION_SECONDS, TIME_FRAME_SECONDS_OFFSET } from "../constants";
+import { decodeBusyTime, decodeOrder, encodeBusyTime, encodeOrder } from "./../encoder";
 import { type Logger, noopLogger } from "../logger";
 import type { Rule } from "../rules/types";
 import { secondsToDate, toSeconds } from "../utils";
 import EngineRules from "./EngineRules";
-import {
-	type BusyTime,
-	type InputOrder,
-	type Order,
-	OrderSource,
-	TimeframeMode,
-	type TimeWindow,
-} from "./types";
+import { type BusyTime, type InputOrder, type Order, OrderSource, TimeframeMode, type TimeWindow } from "./types";
 
 type EngineParams = {
 	bucket: string;
@@ -124,11 +110,7 @@ export class Engine {
 	}
 
 	private async cleanOldBusyTimes(currentTimeSeconds: number): Promise<void> {
-		await this.redis.zremrangebyscore(
-			this.busyTimesKey,
-			0,
-			currentTimeSeconds - BUSY_TIMES_RETENTION_SECONDS,
-		);
+		await this.redis.zremrangebyscore(this.busyTimesKey, 0, currentTimeSeconds - BUSY_TIMES_RETENTION_SECONDS);
 	}
 
 	private async addOrder(order: Order): Promise<void> {
@@ -157,14 +139,8 @@ export class Engine {
 
 		await this.addOrder(order);
 
-		if (
-			!this.engineRules ||
-			!this.engineRules.hasRules() ||
-			order.source !== OrderSource.PERDIEM
-		) {
-			this.logger.warn(
-				"No busy time rules not set or not a Perdiem order, skipping to add busy time",
-			);
+		if (!this.engineRules || !this.engineRules.hasRules() || order.source !== OrderSource.PERDIEM) {
+			this.logger.warn("No busy time rules not set or not a Perdiem order, skipping to add busy time");
 
 			return;
 		}
@@ -174,9 +150,11 @@ export class Engine {
 				continue;
 			}
 
+			const timeFrameSeconds = minutesToSeconds(engineRule.rule.timeFrameMinutes) - TIME_FRAME_SECONDS_OFFSET;
+
 			const timeWindow = Engine.calculateTimeWindow({
 				orderTimeSeconds,
-				timeFrameSeconds: minutesToSeconds(engineRule.rule.timeFrameMinutes),
+				timeFrameSeconds,
 				timeframeMode: this.timeframeMode,
 			});
 
@@ -189,13 +167,12 @@ export class Engine {
 			}
 
 			const busyTimeSeconds = minutesToSeconds(engineRule.rule.busyTimeMinutes);
-			const endTimeSeconds = Math.max(
-				orderTimeSeconds,
-				currentTimeSeconds + busyTimeSeconds,
-			);
+			const endTimeSeconds = Math.max(orderTimeSeconds, currentTimeSeconds + busyTimeSeconds);
 			const startTimeSeconds = endTimeSeconds - busyTimeSeconds;
 
 			await this.addBusyTime({
+				busyTimeId: randomUUID(),
+				ruleId: engineRule.rule.ruleId,
 				startTime: secondsToDate(startTimeSeconds),
 				endTime: secondsToDate(endTimeSeconds),
 				orderTimeSeconds,
@@ -212,12 +189,7 @@ export class Engine {
 
 		await this.cleanOldOrders(currentTimeSeconds);
 
-		const entries = await this.redis.zrangeBuffer(
-			this.ordersKey,
-			0,
-			-1,
-			"WITHSCORES",
-		);
+		const entries = await this.redis.zrangeBuffer(this.ordersKey, 0, -1, "WITHSCORES");
 
 		const orders: Order[] = [];
 
@@ -236,12 +208,7 @@ export class Engine {
 
 		await this.cleanOldBusyTimes(currentTimeSeconds);
 
-		const entries = await this.redis.zrangeBuffer(
-			this.busyTimesKey,
-			0,
-			-1,
-			"WITHSCORES",
-		);
+		const entries = await this.redis.zrangeBuffer(this.busyTimesKey, 0, -1, "WITHSCORES");
 
 		const busyTimes: BusyTime[] = [];
 
@@ -252,9 +219,7 @@ export class Engine {
 			busyTimes.push(busyTime);
 		}
 
-		return busyTimes.sort(
-			(a, b) => toSeconds(a.startTime) - toSeconds(b.startTime),
-		);
+		return busyTimes.sort((a, b) => toSeconds(a.startTime) - toSeconds(b.startTime));
 	}
 
 	public async getOrdersStats(
@@ -291,14 +256,10 @@ export class Engine {
 			});
 		}
 
-		return orders.sort(
-			(a, b) => toSeconds(a.orderTime) - toSeconds(b.orderTime),
-		);
+		return orders.sort((a, b) => toSeconds(a.orderTime) - toSeconds(b.orderTime));
 	}
 
-	public async validateOrderTime(
-		orderTime: Date,
-	): Promise<{ waitPeriodSeconds: number; ordersInWindow: number }> {
+	public async validateOrderTime(orderTime: Date): Promise<{ waitPeriodSeconds: number; ordersInWindow: number }> {
 		const orderTimeSeconds = toSeconds(orderTime);
 		const busyTimes = await this.getBusyTimes();
 
@@ -310,15 +271,10 @@ export class Engine {
 		for (const busyTime of busyTimes) {
 			const startTimeSeconds = toSeconds(busyTime.startTime);
 			const endTimeSeconds = toSeconds(busyTime.endTime);
-			const orderTimeSecondsWithOffset =
-				orderTimeSeconds + waitPeriodInfo.waitPeriodSeconds;
+			const orderTimeSecondsWithOffset = orderTimeSeconds + waitPeriodInfo.waitPeriodSeconds;
 
-			if (
-				orderTimeSecondsWithOffset >= startTimeSeconds &&
-				orderTimeSecondsWithOffset <= endTimeSeconds
-			) {
-				waitPeriodInfo.waitPeriodSeconds =
-					endTimeSeconds + 1 - orderTimeSeconds;
+			if (orderTimeSecondsWithOffset >= startTimeSeconds && orderTimeSecondsWithOffset <= endTimeSeconds) {
+				waitPeriodInfo.waitPeriodSeconds = endTimeSeconds + 1 - orderTimeSeconds;
 				continue;
 			}
 

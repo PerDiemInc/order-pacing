@@ -32,8 +32,7 @@ export interface Order {
 	currentTimeSeconds: number;
 }
 
-export interface InputOrder
-	extends Omit<Order, "orderTimeSeconds" | "currentTimeSeconds"> {}
+export interface InputOrder extends Omit<Order, "orderTimeSeconds" | "currentTimeSeconds"> {}
 
 export interface Threshold {
 	type: "orders" | "items" | "amount";
@@ -50,6 +49,8 @@ export interface BusyTimeContext {
 }
 
 export interface BusyTime {
+	busyTimeId: string;
+	ruleId: string;
 	startTime: Date;
 	endTime: Date;
 	orderTimeSeconds: number;

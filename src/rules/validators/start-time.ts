@@ -12,8 +12,6 @@ export const validateStartTime: RuleValidator = (rule) => {
 	}
 
 	if (!isMatch(rule.startTime, "HH:mm")) {
-		throw new Error(
-			`startTime must be in HH:mm format (e.g., "09:30", "23:45"), got: "${rule.startTime}"`,
-		);
+		throw new Error(`startTime must be in HH:mm format (e.g., "09:30", "23:45"), got: "${rule.startTime}"`);
 	}
 };

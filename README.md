@@ -23,6 +23,7 @@ const engine = new Engine({
   timeframeMode: TimeframeMode.BEFORE_ONLY,
   timeZone: 'UTC',
   rules: [{
+    ruleId: 'rule-1',
     timeFrameMinutes: 30,
     busyTimeMinutes: 15,
     categoryIds: [],
@@ -72,6 +73,7 @@ Creates a new Engine instance.
 - `rules`: Optional array of rules (defaults to `[]`). Rules determine when to apply busy time based on order volume in a time window:
   ```typescript
   rules: [{
+    ruleId: 'rule-1',              // Unique rule identifier
     timeFrameMinutes: 30,        // Time window in minutes
     busyTimeMinutes: 15,         // Busy time to apply in minutes
     categoryIds: [],      // Optional: Filter by category IDs (empty array = all categories)
@@ -114,6 +116,8 @@ Returns an array of busy time entries:
 ```typescript
 [
   {
+    busyTimeId: string,           // Busy time unique identifier
+    ruleId: string,               // Rule identifier that triggered this busy time
     startTime: Date,              // Start of busy period
     endTime: Date,                // End of busy period
     orderTimeSeconds: number,     // Order time in seconds

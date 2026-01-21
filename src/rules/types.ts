@@ -1,4 +1,5 @@
 export interface Rule {
+	ruleId: string;
 	timeFrameMinutes: number;
 	busyTimeMinutes: number;
 	categoryIds: string[];

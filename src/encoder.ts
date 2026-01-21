@@ -44,6 +44,8 @@ enum BusyTimeContextKeyMap {
 }
 
 enum BusyTimeKeyMap {
+	busyTimeId = "id",
+	ruleId = "r",
 	startTime = "st",
 	endTime = "et",
 	orderTimeSeconds = "ots",
@@ -65,10 +67,7 @@ export function encodeOrder(order: Order): Buffer {
 		[OrderKeyMap.orderId]: order.orderId,
 		[OrderKeyMap.items]: encodedItems,
 		[OrderKeyMap.totalAmountCents]: order.totalAmountCents ?? 0,
-		[OrderKeyMap.source]:
-			order.source === OrderSource.PERDIEM
-				? OrderSourceMap.PERDIEM
-				: OrderSourceMap.OTHER,
+		[OrderKeyMap.source]: order.source === OrderSource.PERDIEM ? OrderSourceMap.PERDIEM : OrderSourceMap.OTHER,
 		[OrderKeyMap.orderTime]: order.orderTime,
 		[OrderKeyMap.orderTimeSeconds]: order.orderTimeSeconds ?? 0,
 		[OrderKeyMap.currentTimeSeconds]: order.currentTimeSeconds ?? 0,
@@ -78,24 +77,18 @@ export function encodeOrder(order: Order): Buffer {
 export function decodeOrder(buffer: Buffer): Order {
 	const data = packr.unpack(buffer) as Record<string, unknown>;
 
-	const decodedItems = Array.prototype.map.call(
-		data[OrderKeyMap.items] || [],
-		(item: Record<string, unknown>) => ({
-			itemId: item[OrderItemKeyMap.itemId],
-			quantity: item[OrderItemKeyMap.quantity],
-			totalAmountCents: item[OrderItemKeyMap.totalAmountCents],
-			categoryId: item[OrderItemKeyMap.categoryId],
-		}),
-	);
+	const decodedItems = Array.prototype.map.call(data[OrderKeyMap.items] || [], (item: Record<string, unknown>) => ({
+		itemId: item[OrderItemKeyMap.itemId],
+		quantity: item[OrderItemKeyMap.quantity],
+		totalAmountCents: item[OrderItemKeyMap.totalAmountCents],
+		categoryId: item[OrderItemKeyMap.categoryId],
+	}));
 
 	return {
 		orderId: data[OrderKeyMap.orderId],
 		items: decodedItems,
 		totalAmountCents: data[OrderKeyMap.totalAmountCents],
-		source:
-			data[OrderKeyMap.source] === OrderSourceMap.PERDIEM
-				? OrderSource.PERDIEM
-				: OrderSource.OTHER,
+		source: data[OrderKeyMap.source] === OrderSourceMap.PERDIEM ? OrderSource.PERDIEM : OrderSource.OTHER,
 		orderTime: data[OrderKeyMap.orderTime],
 		orderTimeSeconds: data[OrderKeyMap.orderTimeSeconds],
 		currentTimeSeconds: data[OrderKeyMap.currentTimeSeconds],
@@ -104,20 +97,18 @@ export function decodeOrder(buffer: Buffer): Order {
 
 export function encodeBusyTime(busyTime: BusyTime): Buffer {
 	return packr.pack({
+		[BusyTimeKeyMap.busyTimeId]: busyTime.busyTimeId,
+		[BusyTimeKeyMap.ruleId]: busyTime.ruleId,
 		[BusyTimeKeyMap.startTime]: busyTime.startTime,
 		[BusyTimeKeyMap.endTime]: busyTime.endTime,
 		[BusyTimeKeyMap.orderTimeSeconds]: busyTime.orderTimeSeconds,
 		[BusyTimeKeyMap.currentTimeSeconds]: busyTime.currentTimeSeconds,
 		[BusyTimeKeyMap.busyTimeSeconds]: busyTime.busyTimeSeconds,
 		[BusyTimeKeyMap.busyTimeContext]: {
-			[BusyTimeContextKeyMap.totalAmountCents]:
-				busyTime.busyTimeContext.totalAmountCents ?? 0,
-			[BusyTimeContextKeyMap.totalItems]:
-				busyTime.busyTimeContext.totalItems ?? 0,
-			[BusyTimeContextKeyMap.totalOrders]:
-				busyTime.busyTimeContext.totalOrders ?? 0,
-			[BusyTimeContextKeyMap.categoryIds]:
-				busyTime.busyTimeContext.categoryIds ?? [],
+			[BusyTimeContextKeyMap.totalAmountCents]: busyTime.busyTimeContext.totalAmountCents ?? 0,
+			[BusyTimeContextKeyMap.totalItems]: busyTime.busyTimeContext.totalItems ?? 0,
+			[BusyTimeContextKeyMap.totalOrders]: busyTime.busyTimeContext.totalOrders ?? 0,
+			[BusyTimeContextKeyMap.categoryIds]: busyTime.busyTimeContext.categoryIds ?? [],
 		},
 		[BusyTimeKeyMap.threshold]: {
 			[ThresholdKeyMap.type]: busyTime.threshold.type,
@@ -131,13 +122,12 @@ export function encodeBusyTime(busyTime: BusyTime): Buffer {
 export function decodeBusyTime(buffer: Buffer): BusyTime {
 	const data = packr.unpack(buffer) as Record<string, unknown>;
 
-	const busyTimeContext = data[BusyTimeKeyMap.busyTimeContext] as Record<
-		string,
-		unknown
-	>;
+	const busyTimeContext = data[BusyTimeKeyMap.busyTimeContext] as Record<string, unknown>;
 	const threshold = data[BusyTimeKeyMap.threshold] as Record<string, unknown>;
 
 	return {
+		busyTimeId: data[BusyTimeKeyMap.busyTimeId],
+		ruleId: data[BusyTimeKeyMap.ruleId],
 		startTime: data[BusyTimeKeyMap.startTime],
 		endTime: data[BusyTimeKeyMap.endTime],
 		orderTimeSeconds: data[BusyTimeKeyMap.orderTimeSeconds],

@@ -1,11 +1,6 @@
 import { expect } from "chai";
 import { describe, it } from "mocha";
-import {
-	decodeBusyTime,
-	decodeOrder,
-	encodeBusyTime,
-	encodeOrder,
-} from "../src/encoder";
+import { decodeBusyTime, decodeOrder, encodeBusyTime, encodeOrder } from "../src/encoder";
 import type { BusyTime, Order } from "../src/engine/types";
 import { OrderSource } from "../src/engine/types";
 
@@ -137,6 +132,8 @@ function generateOrderTestCases(): Order[] {
 function generateBusyTimeTestCases(): BusyTime[] {
 	return [
 		{
+			busyTimeId: "busy-1",
+			ruleId: "rule-1",
 			startTime: new Date("2024-01-01T12:00:00Z"),
 			endTime: new Date("2024-01-01T12:15:00Z"),
 			orderTimeSeconds: 1704110400,
@@ -156,6 +153,8 @@ function generateBusyTimeTestCases(): BusyTime[] {
 			},
 		},
 		{
+			busyTimeId: "busy-2",
+			ruleId: "rule-2",
 			startTime: new Date(0),
 			endTime: new Date(0),
 			orderTimeSeconds: 0,
@@ -175,6 +174,8 @@ function generateBusyTimeTestCases(): BusyTime[] {
 			},
 		},
 		{
+			busyTimeId: "busy-3",
+			ruleId: "rule-3",
 			startTime: new Date("2024-06-15T14:25:00Z"),
 			endTime: new Date("2024-06-15T14:40:00Z"),
 			orderTimeSeconds: 1718464200,
@@ -194,6 +195,8 @@ function generateBusyTimeTestCases(): BusyTime[] {
 			},
 		},
 		{
+			busyTimeId: "busy-4",
+			ruleId: "rule-4",
 			startTime: new Date("2024-06-15T14:25:00Z"),
 			endTime: new Date("2024-06-15T14:40:00Z"),
 			orderTimeSeconds: 1718464200,
@@ -213,6 +216,8 @@ function generateBusyTimeTestCases(): BusyTime[] {
 			},
 		},
 		{
+			busyTimeId: "busy-5",
+			ruleId: "rule-5",
 			startTime: new Date("2024-01-01T12:00:00Z"),
 			endTime: new Date("2024-01-01T12:15:00Z"),
 			orderTimeSeconds: 1704110400,
@@ -259,9 +264,7 @@ describe("encodeBusyTime / decodeBusyTime", () => {
 		it(`should round-trip encode/decode busy time case ${index + 1}`, () => {
 			const decoded = decodeBusyTime(encodeBusyTime(busyTime));
 
-			expect(decoded.startTime.getTime()).to.equal(
-				busyTime.startTime.getTime(),
-			);
+			expect(decoded.startTime.getTime()).to.equal(busyTime.startTime.getTime());
 			expect(decoded.endTime.getTime()).to.equal(busyTime.endTime.getTime());
 			expect(decoded.orderTimeSeconds).to.equal(busyTime.orderTimeSeconds);
 			expect(decoded.currentTimeSeconds).to.equal(busyTime.currentTimeSeconds);
