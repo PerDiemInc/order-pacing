@@ -15,11 +15,7 @@ export default class EngineRule {
 		const zonedDate = toZonedTime(time, timeZone);
 		const dayOfWeek = getDay(zonedDate);
 
-		if (
-			Array.isArray(this.rule.weekDays) &&
-			this.rule.weekDays.length > 0 &&
-			!this.rule.weekDays.includes(dayOfWeek)
-		) {
+		if (Array.isArray(this.rule.weekDays) && this.rule.weekDays.length > 0 && !this.rule.weekDays.includes(dayOfWeek)) {
 			return false;
 		}
 
@@ -44,23 +40,14 @@ export default class EngineRule {
 		return true;
 	}
 
-	public thresholdCheck(
-		orders: Order[],
-	): { threshold: Threshold; busyTimeContext: BusyTimeContext } | null {
+	public thresholdCheck(orders: Order[]): { threshold: Threshold; busyTimeContext: BusyTimeContext } | null {
 		const allOrdersTotalItems = orders.reduce(
 			(ordersSum, order) =>
-				ordersSum +
-				(order.items?.reduce(
-					(itemsSum, item) => itemsSum + (item.quantity ?? 1),
-					0,
-				) ?? 0),
+				ordersSum + (order.items?.reduce((itemsSum, item) => itemsSum + (item.quantity ?? 1), 0) ?? 0),
 			0,
 		);
 
-		const allOrdersTotalAmountCents = orders.reduce(
-			(ordersSum, order) => ordersSum + (order.totalAmountCents ?? 0),
-			0,
-		);
+		const allOrdersTotalAmountCents = orders.reduce((ordersSum, order) => ordersSum + (order.totalAmountCents ?? 0), 0);
 
 		const allOrdersCategoryIds = new Set<string>();
 
@@ -87,10 +74,7 @@ export default class EngineRule {
 						let hasMatchingCategory = false;
 
 						for (const item of order.items) {
-							if (
-								item.categoryId &&
-								this.rule.categoryIds.includes(item.categoryId)
-							) {
+							if (item.categoryId && this.rule.categoryIds.includes(item.categoryId)) {
 								hasMatchingCategory = true;
 								applicableTotalAmountCents += item.totalAmountCents ?? 0;
 								applicableTotalItems += item.quantity ?? 1;
@@ -103,21 +87,11 @@ export default class EngineRule {
 
 		const totalOrders = relevantOrders.length;
 
-		const totalItems =
-			this.rule.categoryIds.length > 0
-				? applicableTotalItems
-				: allOrdersTotalItems;
+		const totalItems = this.rule.categoryIds.length > 0 ? applicableTotalItems : allOrdersTotalItems;
 
-		const totalAmount =
-			this.rule.categoryIds.length > 0
-				? applicableTotalAmountCents
-				: allOrdersTotalAmountCents;
+		const totalAmount = this.rule.categoryIds.length > 0 ? applicableTotalAmountCents : allOrdersTotalAmountCents;
 
-		if (
-			this.rule.maxOrders &&
-			this.rule.maxOrders > 0 &&
-			totalOrders >= this.rule.maxOrders
-		) {
+		if (this.rule.maxOrders && this.rule.maxOrders > 0 && totalOrders >= this.rule.maxOrders) {
 			return {
 				threshold: {
 					type: "orders",
@@ -134,11 +108,7 @@ export default class EngineRule {
 			};
 		}
 
-		if (
-			this.rule.maxItems &&
-			this.rule.maxItems > 0 &&
-			totalItems >= this.rule.maxItems
-		) {
+		if (this.rule.maxItems && this.rule.maxItems > 0 && totalItems >= this.rule.maxItems) {
 			return {
 				threshold: {
 					type: "items",
@@ -155,11 +125,7 @@ export default class EngineRule {
 			};
 		}
 
-		if (
-			this.rule.maxAmountCents &&
-			this.rule.maxAmountCents > 0 &&
-			totalAmount >= this.rule.maxAmountCents
-		) {
+		if (this.rule.maxAmountCents && this.rule.maxAmountCents > 0 && totalAmount >= this.rule.maxAmountCents) {
 			return {
 				threshold: {
 					type: "amount",

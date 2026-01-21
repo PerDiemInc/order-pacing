@@ -6,6 +6,7 @@ import { validateEndTime } from "./validators/end-time";
 import { validateMaxAmountCents } from "./validators/max-amount-cents";
 import { validateMaxItems } from "./validators/max-items";
 import { validateMaxOrders } from "./validators/max-orders";
+import { validateRuleId } from "./validators/rule-id";
 import { validateRuleNotNull } from "./validators/rule-not-null";
 import { validateStartTime } from "./validators/start-time";
 import { validateTimeFrameMinutes } from "./validators/time-frame-minutes";
@@ -14,6 +15,7 @@ import { validateWeekDays } from "./validators/week-days";
 
 export const defaultRuleSet = new RuleSet(
 	validateRuleNotNull,
+	validateRuleId,
 	validateTimeFrameMinutes,
 	validateBusyTimeMinutes,
 	validateCategoryIds,

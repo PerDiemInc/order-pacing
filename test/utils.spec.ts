@@ -1,12 +1,6 @@
 import { expect } from "chai";
 import { describe, it } from "mocha";
-import {
-	minutesToSeconds,
-	secondsToDate,
-	secondsToMinutes,
-	timeStringToMinutes,
-	toSeconds,
-} from "../src/utils";
+import { minutesToSeconds, secondsToDate, secondsToMinutes, timeStringToMinutes, toSeconds } from "../src/utils";
 
 describe("toSeconds", () => {
 	it("should convert Date object to seconds", () => {
@@ -65,9 +59,7 @@ describe("secondsToDate", () => {
 	});
 
 	it("should handle negative seconds", () => {
-		expect(secondsToDate(-1000).getTime()).to.equal(
-			new Date(-1000 * 1000).getTime(),
-		);
+		expect(secondsToDate(-1000).getTime()).to.equal(new Date(-1000 * 1000).getTime());
 	});
 });
 

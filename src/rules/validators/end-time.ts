@@ -12,8 +12,6 @@ export const validateEndTime: RuleValidator = (rule) => {
 	}
 
 	if (!isMatch(rule.endTime, "HH:mm")) {
-		throw new Error(
-			`endTime must be in HH:mm format (e.g., "09:30", "23:45"), got: "${rule.endTime}"`,
-		);
+		throw new Error(`endTime must be in HH:mm format (e.g., "09:30", "23:45"), got: "${rule.endTime}"`);
 	}
 };
