@@ -140,7 +140,7 @@ export class Engine {
 		await this.addOrder(order);
 
 		if (!this.engineRules || !this.engineRules.hasRules() || order.source !== OrderSource.PERDIEM) {
-			this.logger.warn("No busy time rules not set or not a Perdiem order, skipping to add busy time");
+			this.logger.debug("No busy time rules not set or not a Perdiem order, skipping to add busy time");
 
 			return;
 		}
