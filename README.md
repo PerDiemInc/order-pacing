@@ -1,5 +1,7 @@
 # Order Pacing Engine
 
+[![CI](https://github.com/PerDiemInc/order-pacing/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/PerDiemInc/order-pacing/actions/workflows/ci.yml)
+
 ## Installation
 
 ```bash
