@@ -8,10 +8,10 @@ export const validateEndTime: RuleValidator = (rule) => {
 	}
 
 	if (typeof rule.endTime !== "string") {
-		throw new Error("endTime must be a string in HH:mm format");
+		throw new Error("endTime must be a string in HH:mm or HH:mm:ss format");
 	}
 
-	if (!isMatch(rule.endTime, "HH:mm")) {
-		throw new Error(`endTime must be in HH:mm format (e.g., "09:30", "23:45"), got: "${rule.endTime}"`);
+	if (!isMatch(rule.endTime, "HH:mm") && !isMatch(rule.endTime, "HH:mm:ss")) {
+		throw new Error(`endTime must be in HH:mm or HH:mm:ss format (e.g., "09:30", "23:45:00"), got: "${rule.endTime}"`);
 	}
 };
