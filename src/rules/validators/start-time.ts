@@ -8,10 +8,12 @@ export const validateStartTime: RuleValidator = (rule) => {
 	}
 
 	if (typeof rule.startTime !== "string") {
-		throw new Error("startTime must be a string in HH:mm format");
+		throw new Error("startTime must be a string in HH:mm or HH:mm:ss format");
 	}
 
-	if (!isMatch(rule.startTime, "HH:mm")) {
-		throw new Error(`startTime must be in HH:mm format (e.g., "09:30", "23:45"), got: "${rule.startTime}"`);
+	if (!isMatch(rule.startTime, "HH:mm") && !isMatch(rule.startTime, "HH:mm:ss")) {
+		throw new Error(
+			`startTime must be in HH:mm or HH:mm:ss format (e.g., "09:30", "23:45:00"), got: "${rule.startTime}"`,
+		);
 	}
 };

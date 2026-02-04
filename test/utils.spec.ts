@@ -132,4 +132,11 @@ describe("timeStringToMinutes", () => {
 	it("should handle end of day", () => {
 		expect(timeStringToMinutes("23:59")).to.equal(1439);
 	});
+
+	it("should accept HH:mm:ss but ignore seconds in calculation", () => {
+		expect(timeStringToMinutes("00:00:30")).to.equal(0);
+		expect(timeStringToMinutes("12:30:30")).to.equal(750);
+		expect(timeStringToMinutes("09:30:00")).to.equal(570);
+		expect(timeStringToMinutes("23:59:59")).to.equal(1439);
+	});
 });
