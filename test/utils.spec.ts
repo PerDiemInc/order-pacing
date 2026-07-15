@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { describe, it } from "mocha";
-import { minutesToSeconds, secondsToDate, secondsToMinutes, timeStringToMinutes, toSeconds } from "../src/utils";
+import { minutesToSeconds, secondsToDate, timeStringToMinutes, toSeconds } from "../src/utils";
 
 describe("toSeconds", () => {
 	it("should convert Date object to seconds", () => {
@@ -81,29 +81,6 @@ describe("minutesToSeconds", () => {
 
 	it("should handle negative minutes", () => {
 		expect(minutesToSeconds(-1)).to.equal(-60);
-	});
-});
-
-describe("secondsToMinutes", () => {
-	it("should convert seconds to minutes", () => {
-		expect(secondsToMinutes(60)).to.equal(1);
-		expect(secondsToMinutes(300)).to.equal(5);
-		expect(secondsToMinutes(3600)).to.equal(60);
-	});
-
-	it("should handle zero seconds", () => {
-		expect(secondsToMinutes(0)).to.equal(0);
-	});
-
-	it("should ceil fractional results", () => {
-		expect(secondsToMinutes(30)).to.equal(1);
-		expect(secondsToMinutes(90)).to.equal(2);
-		expect(secondsToMinutes(31)).to.equal(1);
-		expect(secondsToMinutes(59)).to.equal(1);
-	});
-
-	it("should handle negative seconds", () => {
-		expect(secondsToMinutes(-60)).to.equal(-1);
 	});
 });
 

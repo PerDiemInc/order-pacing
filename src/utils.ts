@@ -12,10 +12,6 @@ export function minutesToSeconds(minutes: number): number {
 	return minutes * 60;
 }
 
-export function secondsToMinutes(seconds: number): number {
-	return Math.ceil(seconds / 60);
-}
-
 export function timeStringToMinutes(timeString: string): number {
 	const [hours, minutes] = timeString.split(":").map(Number);
 

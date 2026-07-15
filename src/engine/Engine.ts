@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { minutesToSeconds } from "date-fns";
 import type Redis from "ioredis";
 import { BUSY_TIMES_RETENTION_SECONDS, ORDERS_RETENTION_SECONDS, TIME_FRAME_SECONDS_OFFSET } from "../constants";
 import { decodeBusyTime, decodeOrder, encodeBusyTime, encodeOrder } from "./../encoder";
 import { type Logger, noopLogger } from "../logger";
 import type { Rule } from "../rules/types";
-import { secondsToDate, toSeconds } from "../utils";
+import { minutesToSeconds, secondsToDate, toSeconds } from "../utils";
 import EngineRules from "./EngineRules";
 import { type BusyTime, type InputOrder, type Order, OrderSource, TimeframeMode, type TimeWindow } from "./types";
 
@@ -117,12 +116,16 @@ export class Engine {
 		const buffer = encodeOrder(order);
 
 		await this.redis.zadd(this.ordersKey, order.orderTimeSeconds, buffer);
+		// Refresh the key TTL on every write so buckets that go idle expire
+		// instead of lingering in Redis forever (memory hygiene for many buckets).
+		await this.redis.expire(this.ordersKey, ORDERS_RETENTION_SECONDS);
 	}
 
 	private async addBusyTime(busyTime: BusyTime): Promise<void> {
 		const buffer = encodeBusyTime(busyTime);
 
 		await this.redis.zadd(this.busyTimesKey, busyTime.orderTimeSeconds, buffer);
+		await this.redis.expire(this.busyTimesKey, BUSY_TIMES_RETENTION_SECONDS);
 	}
 
 	public async add(inputOrder: InputOrder): Promise<void> {
@@ -132,10 +135,12 @@ export class Engine {
 		await this.cleanOldOrders(currentTimeSeconds);
 		await this.cleanOldBusyTimes(currentTimeSeconds);
 
-		const order: Order = Object.assign(inputOrder, {
+		// Build a new object instead of mutating the caller-supplied InputOrder.
+		const order: Order = {
+			...inputOrder,
 			currentTimeSeconds,
 			orderTimeSeconds,
-		});
+		};
 
 		await this.addOrder(order);
 
