@@ -1,2 +1,6 @@
 export { Engine, OrderSource, TimeframeMode } from "./engine";
-export { consoleLogger } from "./logger";
+export type { BusyTime, BusyTimeContext, InputOrder, Order, OrderItem, Threshold } from "./engine/types";
+export type { Logger } from "./logger";
+export { consoleLogger, noopLogger } from "./logger";
+export type { Rule } from "./rules/types";
+export { matchesTags } from "./utils";

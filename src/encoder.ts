@@ -24,6 +24,7 @@ enum OrderKeyMap {
 	items = "is",
 	totalAmountCents = "ta",
 	source = "s",
+	tags = "tg",
 	orderTime = "ot",
 	orderTimeSeconds = "ots",
 	currentTimeSeconds = "cts",
@@ -51,6 +52,7 @@ enum BusyTimeKeyMap {
 	orderTimeSeconds = "ots",
 	currentTimeSeconds = "cts",
 	busyTimeSeconds = "bts",
+	scope = "sc",
 	busyTimeContext = "btc",
 	threshold = "t",
 }
@@ -58,7 +60,7 @@ enum BusyTimeKeyMap {
 export function encodeOrder(order: Order): Buffer {
 	const encodedItems = (order.items || []).map((item) => ({
 		[OrderItemKeyMap.itemId]: item.itemId,
-		[OrderItemKeyMap.quantity]: item.quantity ?? 0,
+		[OrderItemKeyMap.quantity]: item.quantity ?? 1,
 		[OrderItemKeyMap.totalAmountCents]: item.totalAmountCents ?? 0,
 		[OrderItemKeyMap.categoryId]: item.categoryId ?? null,
 	}));
@@ -68,6 +70,7 @@ export function encodeOrder(order: Order): Buffer {
 		[OrderKeyMap.items]: encodedItems,
 		[OrderKeyMap.totalAmountCents]: order.totalAmountCents ?? 0,
 		[OrderKeyMap.source]: order.source === OrderSource.PERDIEM ? OrderSourceMap.PERDIEM : OrderSourceMap.OTHER,
+		[OrderKeyMap.tags]: order.tags ?? [],
 		[OrderKeyMap.orderTime]: order.orderTime,
 		[OrderKeyMap.orderTimeSeconds]: order.orderTimeSeconds ?? 0,
 		[OrderKeyMap.currentTimeSeconds]: order.currentTimeSeconds ?? 0,
@@ -89,6 +92,7 @@ export function decodeOrder(buffer: Buffer): Order {
 		items: decodedItems,
 		totalAmountCents: data[OrderKeyMap.totalAmountCents],
 		source: data[OrderKeyMap.source] === OrderSourceMap.PERDIEM ? OrderSource.PERDIEM : OrderSource.OTHER,
+		tags: data[OrderKeyMap.tags] ?? [],
 		orderTime: data[OrderKeyMap.orderTime],
 		orderTimeSeconds: data[OrderKeyMap.orderTimeSeconds],
 		currentTimeSeconds: data[OrderKeyMap.currentTimeSeconds],
@@ -104,6 +108,7 @@ export function encodeBusyTime(busyTime: BusyTime): Buffer {
 		[BusyTimeKeyMap.orderTimeSeconds]: busyTime.orderTimeSeconds,
 		[BusyTimeKeyMap.currentTimeSeconds]: busyTime.currentTimeSeconds,
 		[BusyTimeKeyMap.busyTimeSeconds]: busyTime.busyTimeSeconds,
+		[BusyTimeKeyMap.scope]: busyTime.scope ?? [],
 		[BusyTimeKeyMap.busyTimeContext]: {
 			[BusyTimeContextKeyMap.totalAmountCents]: busyTime.busyTimeContext.totalAmountCents ?? 0,
 			[BusyTimeContextKeyMap.totalItems]: busyTime.busyTimeContext.totalItems ?? 0,
@@ -133,6 +138,7 @@ export function decodeBusyTime(buffer: Buffer): BusyTime {
 		orderTimeSeconds: data[BusyTimeKeyMap.orderTimeSeconds],
 		currentTimeSeconds: data[BusyTimeKeyMap.currentTimeSeconds],
 		busyTimeSeconds: data[BusyTimeKeyMap.busyTimeSeconds],
+		scope: data[BusyTimeKeyMap.scope] ?? [],
 		busyTimeContext: {
 			totalAmountCents: busyTimeContext[BusyTimeContextKeyMap.totalAmountCents],
 			totalItems: busyTimeContext[BusyTimeContextKeyMap.totalItems],

@@ -2,8 +2,9 @@ export interface Rule {
 	ruleId: string;
 	timeFrameMinutes: number;
 	busyTimeMinutes: number;
-	categoryIds: string[];
-	weekDays: number[];
+	categoryIds?: string[];
+	tags?: string[];
+	weekDays?: number[];
 	startTime?: string;
 	endTime?: string;
 	maxOrders?: number;

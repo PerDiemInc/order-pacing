@@ -1,5 +1,6 @@
 import { expect } from "chai";
 import { describe, it } from "mocha";
+import { Packr } from "msgpackr";
 import { decodeBusyTime, decodeOrder, encodeBusyTime, encodeOrder } from "../src/encoder";
 import type { BusyTime, Order } from "../src/engine/types";
 import { OrderSource } from "../src/engine/types";
@@ -272,5 +273,84 @@ describe("encodeBusyTime / decodeBusyTime", () => {
 			expect(decoded.busyTimeContext).to.deep.equal(busyTime.busyTimeContext);
 			expect(decoded.threshold).to.deep.equal(busyTime.threshold);
 		});
+	});
+});
+
+describe("tags encoding", () => {
+	const packr = new Packr({ useRecords: true, useTimestamp32: true });
+	const baseDate = new Date("2024-01-01T12:00:00Z");
+	const baseTimeSeconds = 1704110400;
+
+	function baseOrder(): Order {
+		return {
+			orderId: "order-1",
+			items: [],
+			totalAmountCents: 1000,
+			source: OrderSource.PERDIEM,
+			tags: ["pickup"],
+			orderTime: baseDate,
+			orderTimeSeconds: baseTimeSeconds,
+			currentTimeSeconds: baseTimeSeconds,
+		};
+	}
+
+	it("should round-trip tags", () => {
+		const delivery: Order = { ...baseOrder(), tags: ["delivery", "catering"] };
+
+		expect(decodeOrder(encodeOrder(delivery)).tags).to.deep.equal(["delivery", "catering"]);
+		expect(decodeOrder(encodeOrder(baseOrder())).tags).to.deep.equal(["pickup"]);
+	});
+
+	it("should decode legacy orders without tags as untagged", () => {
+		const legacyBuffer = packr.pack({
+			id: "order-legacy",
+			is: [],
+			ta: 1000,
+			s: "P",
+			ot: baseDate,
+			ots: baseTimeSeconds,
+			cts: baseTimeSeconds,
+		});
+
+		const decoded = decodeOrder(legacyBuffer);
+
+		expect(decoded.orderId).to.equal("order-legacy");
+		expect(decoded.tags).to.deep.equal([]);
+	});
+
+	it("should round-trip the busy time scope", () => {
+		const busyTime: BusyTime = {
+			busyTimeId: "busy-1",
+			ruleId: "rule-1",
+			startTime: baseDate,
+			endTime: new Date(baseDate.getTime() + 900000),
+			orderTimeSeconds: baseTimeSeconds,
+			currentTimeSeconds: baseTimeSeconds,
+			busyTimeSeconds: 900,
+			scope: ["delivery", "catering"],
+			busyTimeContext: { totalAmountCents: 1000, totalItems: 1, totalOrders: 1, categoryIds: [] },
+			threshold: { type: "orders", value: 2, limit: 2, categoryIds: [] },
+		};
+
+		expect(decodeBusyTime(encodeBusyTime(busyTime)).scope).to.deep.equal(busyTime.scope);
+	});
+
+	it("should decode legacy busy times without a scope as applying to everything", () => {
+		const legacyBuffer = packr.pack({
+			id: "busy-legacy",
+			r: "rule-1",
+			st: baseDate,
+			et: new Date(baseDate.getTime() + 900000),
+			ots: baseTimeSeconds,
+			cts: baseTimeSeconds,
+			bts: 900,
+			btc: { ta: 0, ti: 0, to: 3, c: [] },
+			t: { t: "orders", v: 3, l: 3, c: [] },
+		});
+
+		const decoded = decodeBusyTime(legacyBuffer);
+
+		expect(decoded.ruleId).to.equal("rule-1");
+		expect(decoded.scope).to.deep.equal([]);
 	});
 });

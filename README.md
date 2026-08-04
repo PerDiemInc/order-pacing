@@ -30,6 +30,7 @@ const engine = new Engine({
     busyTimeMinutes: 15,
     categoryIds: [],
     weekDays: [],
+    tags: ['delivery'],
     maxOrders: 10,
     maxItems: 100,
     maxAmountCents: 100000
@@ -41,6 +42,7 @@ await engine.add({
   orderTime: new Date(),
   totalAmountCents: 5000,
   source: OrderSource.PERDIEM,
+  tags: ['delivery'],
   items: [{
     itemId: 'item-1',
     quantity: 2,
@@ -51,7 +53,7 @@ await engine.add({
 
 const busyTimes = await engine.getBusyTimes();
 const orders = await engine.getOrders();
-const validation = await engine.validateOrderTime(new Date());
+const validation = await engine.validateOrderTime(new Date(), ['delivery']);
 const stats = await engine.getOrdersStats(
   new Date(Date.now() - 24 * 60 * 60 * 1000),
   new Date(Date.now() + 24 * 60 * 60 * 1000)
@@ -67,32 +69,35 @@ Creates a new Engine instance.
 - `redis`: Redis instance from ioredis
 - `bucket`: Bucket identifier (e.g., `storeId:locationId`)
 - `timeframeMode`: Optional timeframe calculation mode. Options:
-  - `TimeframeMode.BEFORE_ONLY` (default): Look back from order time
-  - `TimeframeMode.CENTERED`: Look both before and after order time (centered window)
-  - `TimeframeMode.AFTER_ONLY`: Look forward from order time
-  - `TimeframeMode.BEFORE_AND_AFTER`: Look both before and after order time (full window)
-- `timeZone`: Optional timezone string (defaults to `'UTC'`)
+  - `TimeframeMode.BEFORE_ONLY` (default): Look back `timeFrameMinutes` from order time
+  - `TimeframeMode.CENTERED`: Half of `timeFrameMinutes` on each side of order time (~`timeFrameMinutes` total)
+  - `TimeframeMode.AFTER_ONLY`: Look forward `timeFrameMinutes` from order time
+  - `TimeframeMode.BEFORE_AND_AFTER`: `timeFrameMinutes` on each side of order time (~2x `timeFrameMinutes` total)
+- `timeZone`: Optional IANA timezone name, e.g. `'America/New_York'` (defaults to `'UTC'`). Used only to evaluate rule `weekDays`/`startTime`/`endTime` against the order time; all timestamps are stored as UTC epoch seconds.
 - `rules`: Optional array of rules (defaults to `[]`). Rules determine when to apply busy time based on order volume in a time window:
   ```typescript
   rules: [{
     ruleId: 'rule-1',              // Unique rule identifier
     timeFrameMinutes: 30,        // Time window in minutes
-    busyTimeMinutes: 15,         // Busy time to apply in minutes
-    categoryIds: [],      // Optional: Filter by category IDs (empty array = all categories)
-    weekDays: [],         // Optional: Filter by week days 0-6 (empty array = all days)
-    startTime: '09:00',   // Optional: Start time for rule (HH:mm format)
-    endTime: '17:00',     // Optional: End time for rule (HH:mm format)
+    busyTimeMinutes: 15,         // Busy time to apply in minutes (minimum 5)
+    categoryIds: [],      // Optional: Filter by category IDs (omitted or empty = all categories)
+    weekDays: [],         // Optional: Filter by week days 0-6, 0 = Sunday (omitted or empty = all days)
+    startTime: '09:00',   // Optional: Start time for rule (HH:mm or HH:mm:ss, seconds are ignored)
+    endTime: '17:00',     // Optional: End time for rule (HH:mm or HH:mm:ss, seconds are ignored)
+    tags: ['delivery'],   // Optional: Filter by order tags (omitted or empty = all orders)
     maxOrders: 10,        // Optional: Max orders threshold
     maxItems: 100,        // Optional: Max items threshold
     maxAmountCents: 100000 // Optional: Max total amount in cents threshold
   }]
   ```
-  At least one threshold (`maxOrders`, `maxItems`, or `maxAmountCents`) must be set. When any threshold is exceeded within the time window, the busy time is applied. Multiple rules can be set to handle different scenarios.
-- `logger`: Optional logger instance (defaults to noop logger)
+  At least one threshold (`maxOrders`, `maxItems`, or `maxAmountCents`) must be set. When any threshold is reached (`>=`) within the time window — the order being added counts toward its own window — the busy time is applied. Multiple rules can be set to handle different scenarios; each matching rule creates its own busy time. The constructor throws if any rule is invalid, naming the offending rule.
+
+  A rule scoped by `tags` only counts matching orders toward its thresholds, only trips on matching orders, and its busy times only delay matching orders — a `['delivery']` cap never blocks pickups. An order matches when it carries every rule tag; tag vocabulary is the consumer's to define (e.g. `pickup`, `delivery`, `catering`). All rule filters combine with AND.
+- `logger`: Optional logger instance (defaults to a noop logger; a `consoleLogger` is also exported)
 
 ### `add(inputOrder)`
 
-Adds an order to the engine. If thresholds are exceeded, a busy time period is created.
+Adds an order to the engine. If a rule's threshold is reached, a busy time period of exactly `busyTimeMinutes` is created, ending at the order's scheduled time or `busyTimeMinutes` from now, whichever is later. Throws a `TypeError` if `orderTime` is not a valid `Date`, `orderId` is empty, or `tags` is not an array of non-empty strings.
 
 ```typescript
 await engine.add({
@@ -100,6 +105,7 @@ await engine.add({
   orderTime: new Date(),
   totalAmountCents: 5000, // Amount in cents ($50.00)
   source: OrderSource.PERDIEM, // or OrderSource.OTHER
+  tags: ['pickup'],
   items: [{
     itemId: 'item-1',
     quantity: 2,
@@ -125,6 +131,7 @@ Returns an array of busy time entries:
     orderTimeSeconds: number,     // Order time in seconds
     currentTimeSeconds: number,   // Current time in seconds when busy time was created
     busyTimeSeconds: number,      // Duration in seconds
+    scope: string[],              // The tripping rule's tags; only matching orders are delayed ([] = all)
     busyTimeContext: {
       totalAmountCents: number,   // Total amount in cents from all orders in the time window
       totalItems: number,         // Total items from all orders in the time window
@@ -132,10 +139,10 @@ Returns an array of busy time entries:
       categoryIds: string[]       // All category IDs from all orders in the time window
     },
     threshold: {
-      type: 'orders' | 'items' | 'amount', // Type of threshold that was exceeded
-      value: number,              // Actual value that exceeded the threshold
-      limit: number,              // Threshold limit that was exceeded
-      categoryIds: string[]       // Category IDs that were involved in the threshold
+      type: 'orders' | 'items' | 'amount', // Type of threshold that was reached
+      value: number,              // Actual value that reached the threshold
+      limit: number,              // Threshold limit that was reached
+      categoryIds: string[]       // The rule's configured categoryIds filter (empty if unfiltered)
     }
   }
 ]
@@ -164,20 +171,22 @@ Returns an array of order entries:
 ]
 ```
 
-### `validateOrderTime(orderTime)`
+### `validateOrderTime(orderTime, tags?)`
 
-Checks if an order placed at the given time would fall within a busy period. Returns wait period information:
+Checks if an order placed at the given time would fall within a busy period that applies to its tags (`tags` defaults to `[]`). Only busy periods whose scope matches are considered — a `['delivery']`-scoped busy period never delays a pickup order. Consecutive matching busy periods chain: if pushing the order past one period lands it inside the next, the wait extends until the first free moment. Already-ended busy periods are ignored. Throws a `TypeError` if `orderTime` is not a valid `Date` or `tags` is not an array of non-empty strings. Returns wait period information:
 
 ```typescript
+const validation = await engine.validateOrderTime(new Date(), ['delivery']);
+
 {
-  waitPeriodSeconds: number,  // Seconds to wait until busy period ends (0 if not busy)
-  ordersInWindow: number      // Number of orders in the time window
+  waitPeriodSeconds: number,  // Seconds to wait until one second past the last delaying busy period (0 if not busy)
+  ordersInWindow: number      // totalOrders recorded by the busy period that delayed the order (0 if not busy)
 }
 ```
 
 ### `getOrdersStats(startTime, endTime)`
 
-Retrieves order statistics for a specific time range. Returns an array of orders sorted by order time:
+Retrieves order statistics for a specific time range. Note that orders are only retained for 7 days (see Data retention below), so older ranges return partial or no data. Returns an array of orders sorted by order time:
 
 ```typescript
 [
@@ -197,3 +206,15 @@ const stats = await engine.getOrdersStats(
   new Date(Date.now() + 24 * 60 * 60 * 1000)
 );
 ```
+
+## Data retention
+
+- Orders are kept for **7 days** past their order time; busy times for **1 day** past their triggering order's time.
+- Pruning happens lazily on engine calls (`add()` and the read methods) — there is no TTL on the Redis keys, so buckets that stop receiving traffic keep their last entries until the next call.
+- `validateOrderTime()` ignores busy periods that have already ended, so lingering expired entries do not affect results.
+
+## Redis requirements
+
+- `ioredis` (v5) is a peer dependency; the engine uses an injected client and never opens its own connection.
+- Each bucket uses two sorted sets: `orders:{bucket}` and `busytimes:{bucket}`.
+- Every method, including the `get*` reads, may prune expired entries, so the engine needs a writable Redis connection.
