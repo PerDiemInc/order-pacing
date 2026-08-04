@@ -7,14 +7,18 @@ export default class EngineRules {
 
 	constructor(rules: Rule[]) {
 		if (!Array.isArray(rules)) {
-			return;
+			throw new TypeError("rules must be an array of Rule objects");
 		}
 
 		for (const rule of rules) {
-			defaultRuleSet.validate(rule);
+			try {
+				defaultRuleSet.validate(rule);
+			} catch (error) {
+				throw new Error(`Invalid rule "${rule?.ruleId}": ${(error as Error).message}`);
+			}
 		}
 
-		this.rules = rules;
+		this.rules = [...rules];
 	}
 
 	public hasRules(): boolean {

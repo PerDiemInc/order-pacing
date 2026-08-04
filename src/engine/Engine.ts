@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { minutesToSeconds } from "date-fns";
 import type Redis from "ioredis";
 import { BUSY_TIMES_RETENTION_SECONDS, ORDERS_RETENTION_SECONDS, TIME_FRAME_SECONDS_OFFSET } from "../constants";
-import { decodeBusyTime, decodeOrder, encodeBusyTime, encodeOrder } from "./../encoder";
+import { decodeBusyTime, decodeOrder, encodeBusyTime, encodeOrder } from "../encoder";
 import { type Logger, noopLogger } from "../logger";
 import type { Rule } from "../rules/types";
-import { secondsToDate, toSeconds } from "../utils";
+import { matchesTags, secondsToDate, toSeconds } from "../utils";
 import EngineRules from "./EngineRules";
 import { type BusyTime, type InputOrder, type Order, OrderSource, TimeframeMode, type TimeWindow } from "./types";
 
@@ -126,27 +126,36 @@ export class Engine {
 	}
 
 	public async add(inputOrder: InputOrder): Promise<void> {
+		if (!(inputOrder.orderTime instanceof Date) || Number.isNaN(inputOrder.orderTime.getTime())) {
+			throw new TypeError("orderTime must be a valid Date");
+		}
+
+		if (typeof inputOrder.orderId !== "string" || inputOrder.orderId.length === 0) {
+			throw new TypeError("orderId must be a non-empty string");
+		}
+
+		if (!Array.isArray(inputOrder.tags) || inputOrder.tags.some((tag) => typeof tag !== "string" || tag.length === 0)) {
+			throw new TypeError("tags must be an array of non-empty strings");
+		}
+
 		const orderTimeSeconds = toSeconds(inputOrder.orderTime);
 		const currentTimeSeconds = toSeconds(Date.now());
 
 		await this.cleanOldOrders(currentTimeSeconds);
 		await this.cleanOldBusyTimes(currentTimeSeconds);
 
-		const order: Order = Object.assign(inputOrder, {
-			currentTimeSeconds,
-			orderTimeSeconds,
-		});
+		const order: Order = { ...inputOrder, currentTimeSeconds, orderTimeSeconds };
 
 		await this.addOrder(order);
 
-		if (!this.engineRules || !this.engineRules.hasRules() || order.source !== OrderSource.PERDIEM) {
-			this.logger.debug("No busy time rules not set or not a Perdiem order, skipping to add busy time");
+		if (!this.engineRules.hasRules() || order.source !== OrderSource.PERDIEM) {
+			this.logger.debug("No busy-time rules configured or order source is not PERDIEM; skipping busy-time evaluation");
 
 			return;
 		}
 
 		for (const engineRule of this.engineRules.getEngineRules()) {
-			if (!engineRule.applyCheck(order.orderTime, this.timeZone)) {
+			if (!engineRule.applyCheck(order, this.timeZone)) {
 				continue;
 			}
 
@@ -178,6 +187,7 @@ export class Engine {
 				orderTimeSeconds,
 				currentTimeSeconds,
 				busyTimeSeconds,
+				scope: engineRule.scope,
 				threshold: thresholdInfo.threshold,
 				busyTimeContext: thresholdInfo.busyTimeContext,
 			});
@@ -259,31 +269,41 @@ export class Engine {
 		return orders.sort((a, b) => toSeconds(a.orderTime) - toSeconds(b.orderTime));
 	}
 
-	public async validateOrderTime(orderTime: Date): Promise<{ waitPeriodSeconds: number; ordersInWindow: number }> {
-		const orderTimeSeconds = toSeconds(orderTime);
-		const busyTimes = await this.getBusyTimes();
+	public async validateOrderTime(
+		orderTime: Date,
+		tags: string[] = [],
+	): Promise<{ waitPeriodSeconds: number; ordersInWindow: number }> {
+		if (!(orderTime instanceof Date) || Number.isNaN(orderTime.getTime())) {
+			throw new TypeError("orderTime must be a valid Date");
+		}
 
-		const waitPeriodInfo = {
-			waitPeriodSeconds: 0,
-			ordersInWindow: 0,
-		};
+		if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== "string" || tag.length === 0)) {
+			throw new TypeError("tags must be an array of non-empty strings");
+		}
+
+		const orderTimeSeconds = toSeconds(orderTime);
+		const busyTimes = (await this.getBusyTimes()).filter((busyTime) => matchesTags(busyTime.scope, tags));
+
+		let waitPeriodSeconds = 0;
+		let ordersInWindow = 0;
 
 		for (const busyTime of busyTimes) {
 			const startTimeSeconds = toSeconds(busyTime.startTime);
 			const endTimeSeconds = toSeconds(busyTime.endTime);
-			const orderTimeSecondsWithOffset = orderTimeSeconds + waitPeriodInfo.waitPeriodSeconds;
+			const orderTimeSecondsWithOffset = orderTimeSeconds + waitPeriodSeconds;
 
-			if (orderTimeSecondsWithOffset >= startTimeSeconds && orderTimeSecondsWithOffset <= endTimeSeconds) {
-				waitPeriodInfo.waitPeriodSeconds = endTimeSeconds + 1 - orderTimeSeconds;
+			if (orderTimeSecondsWithOffset < startTimeSeconds) {
+				break;
+			}
+
+			if (orderTimeSecondsWithOffset > endTimeSeconds) {
 				continue;
 			}
 
-			break;
+			waitPeriodSeconds = endTimeSeconds + 1 - orderTimeSeconds;
+			ordersInWindow = busyTime.busyTimeContext.totalOrders;
 		}
 
-		return {
-			waitPeriodSeconds: waitPeriodInfo.waitPeriodSeconds,
-			ordersInWindow: waitPeriodInfo.ordersInWindow,
-		};
+		return { waitPeriodSeconds, ordersInWindow };
 	}
 }

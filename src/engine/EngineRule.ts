@@ -1,7 +1,7 @@
 import { getDay, getHours, getMinutes } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import type { Rule } from "../rules/types";
-import { timeStringToMinutes } from "../utils";
+import { matchesTags, timeStringToMinutes } from "../utils";
 import type { BusyTimeContext, Order, Threshold } from "./types";
 
 export default class EngineRule {
@@ -11,8 +11,16 @@ export default class EngineRule {
 		this.rule = rule;
 	}
 
-	public applyCheck(time: Date, timeZone: string): boolean {
-		const zonedDate = toZonedTime(time, timeZone);
+	public get scope(): string[] {
+		return this.rule.tags ?? [];
+	}
+
+	public applyCheck(order: Order, timeZone: string): boolean {
+		if (!matchesTags(this.scope, order.tags)) {
+			return false;
+		}
+
+		const zonedDate = toZonedTime(order.orderTime, timeZone);
 		const dayOfWeek = getDay(zonedDate);
 
 		if (Array.isArray(this.rule.weekDays) && this.rule.weekDays.length > 0 && !this.rule.weekDays.includes(dayOfWeek)) {
@@ -41,105 +49,80 @@ export default class EngineRule {
 	}
 
 	public thresholdCheck(orders: Order[]): { threshold: Threshold; busyTimeContext: BusyTimeContext } | null {
-		const allOrdersTotalItems = orders.reduce(
-			(ordersSum, order) =>
-				ordersSum + (order.items?.reduce((itemsSum, item) => itemsSum + (item.quantity ?? 1), 0) ?? 0),
-			0,
-		);
+		const ruleCategoryIds = this.rule.categoryIds ?? [];
 
-		const allOrdersTotalAmountCents = orders.reduce((ordersSum, order) => ordersSum + (order.totalAmountCents ?? 0), 0);
-
-		const allOrdersCategoryIds = new Set<string>();
+		const allCategoryIds = new Set<string>();
+		let allOrdersTotalItems = 0;
+		let allOrdersTotalAmountCents = 0;
 
 		for (const order of orders) {
-			if (order.items) {
-				for (const item of order.items) {
-					if (item.categoryId) {
-						allOrdersCategoryIds.add(item.categoryId);
-					}
+			allOrdersTotalAmountCents += order.totalAmountCents ?? 0;
+
+			for (const item of order.items ?? []) {
+				allOrdersTotalItems += item.quantity ?? 1;
+
+				if (item.categoryId) {
+					allCategoryIds.add(item.categoryId);
 				}
 			}
 		}
 
-		let applicableTotalAmountCents = 0;
-		let applicableTotalItems = 0;
+		const matchedOrders = orders.filter((order) => matchesTags(this.scope, order.tags));
 
-		const relevantOrders =
-			this.rule.categoryIds.length > 0
-				? orders.filter((order) => {
-						if (!order.items || order.items.length === 0) {
-							return false;
-						}
+		let totalOrders = matchedOrders.length;
+		let totalItems = 0;
+		let totalAmount = 0;
 
-						let hasMatchingCategory = false;
+		if (ruleCategoryIds.length > 0) {
+			totalOrders = 0;
 
-						for (const item of order.items) {
-							if (item.categoryId && this.rule.categoryIds.includes(item.categoryId)) {
-								hasMatchingCategory = true;
-								applicableTotalAmountCents += item.totalAmountCents ?? 0;
-								applicableTotalItems += item.quantity ?? 1;
-							}
-						}
+			for (const order of matchedOrders) {
+				let hasMatchingCategory = false;
 
-						return hasMatchingCategory;
-					})
-				: orders;
+				for (const item of order.items ?? []) {
+					if (item.categoryId && ruleCategoryIds.includes(item.categoryId)) {
+						hasMatchingCategory = true;
+						totalItems += item.quantity ?? 1;
+						totalAmount += item.totalAmountCents ?? 0;
+					}
+				}
 
-		const totalOrders = relevantOrders.length;
+				if (hasMatchingCategory) {
+					totalOrders += 1;
+				}
+			}
+		} else {
+			for (const order of matchedOrders) {
+				totalAmount += order.totalAmountCents ?? 0;
 
-		const totalItems = this.rule.categoryIds.length > 0 ? applicableTotalItems : allOrdersTotalItems;
+				for (const item of order.items ?? []) {
+					totalItems += item.quantity ?? 1;
+				}
+			}
+		}
 
-		const totalAmount = this.rule.categoryIds.length > 0 ? applicableTotalAmountCents : allOrdersTotalAmountCents;
+		const busyTimeContext: BusyTimeContext = {
+			totalAmountCents: allOrdersTotalAmountCents,
+			totalItems: allOrdersTotalItems,
+			totalOrders: orders.length,
+			categoryIds: Array.from(allCategoryIds),
+		};
+
+		const reached = (type: Threshold["type"], value: number, limit: number) => ({
+			threshold: { type, value, limit, categoryIds: ruleCategoryIds },
+			busyTimeContext,
+		});
 
 		if (this.rule.maxOrders && this.rule.maxOrders > 0 && totalOrders >= this.rule.maxOrders) {
-			return {
-				threshold: {
-					type: "orders",
-					value: totalOrders,
-					limit: this.rule.maxOrders,
-					categoryIds: this.rule.categoryIds,
-				},
-				busyTimeContext: {
-					totalAmountCents: allOrdersTotalAmountCents,
-					totalItems: allOrdersTotalItems,
-					totalOrders: orders.length,
-					categoryIds: Array.from(allOrdersCategoryIds),
-				},
-			};
+			return reached("orders", totalOrders, this.rule.maxOrders);
 		}
 
 		if (this.rule.maxItems && this.rule.maxItems > 0 && totalItems >= this.rule.maxItems) {
-			return {
-				threshold: {
-					type: "items",
-					value: totalItems,
-					limit: this.rule.maxItems,
-					categoryIds: this.rule.categoryIds,
-				},
-				busyTimeContext: {
-					totalAmountCents: allOrdersTotalAmountCents,
-					totalItems: allOrdersTotalItems,
-					totalOrders: orders.length,
-					categoryIds: Array.from(allOrdersCategoryIds),
-				},
-			};
+			return reached("items", totalItems, this.rule.maxItems);
 		}
 
 		if (this.rule.maxAmountCents && this.rule.maxAmountCents > 0 && totalAmount >= this.rule.maxAmountCents) {
-			return {
-				threshold: {
-					type: "amount",
-					value: totalAmount,
-					limit: this.rule.maxAmountCents,
-					categoryIds: this.rule.categoryIds,
-				},
-				busyTimeContext: {
-					totalAmountCents: allOrdersTotalAmountCents,
-					totalItems: allOrdersTotalItems,
-					totalOrders: orders.length,
-					categoryIds: Array.from(allOrdersCategoryIds),
-				},
-			};
+			return reached("amount", totalAmount, this.rule.maxAmountCents);
 		}
 
 		return null;

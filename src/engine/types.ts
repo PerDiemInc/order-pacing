@@ -15,7 +15,7 @@ export type TimeWindow = {
 	end: number;
 };
 
-interface OrderItem {
+export interface OrderItem {
 	itemId: string;
 	quantity: number;
 	totalAmountCents: number;
@@ -27,6 +27,7 @@ export interface Order {
 	items: OrderItem[];
 	totalAmountCents: number;
 	source: OrderSource;
+	tags: string[];
 	orderTime: Date;
 	orderTimeSeconds: number;
 	currentTimeSeconds: number;
@@ -56,6 +57,7 @@ export interface BusyTime {
 	orderTimeSeconds: number;
 	currentTimeSeconds: number;
 	busyTimeSeconds: number;
+	scope: string[];
 	busyTimeContext: BusyTimeContext;
 	threshold: Threshold;
 }

@@ -1,6 +1,10 @@
 import type { RuleValidator } from "../types";
 
 export const validateWeekDays: RuleValidator = (rule) => {
+	if (rule.weekDays === undefined) {
+		return;
+	}
+
 	if (!Array.isArray(rule.weekDays)) {
 		throw new Error("weekDays must be an array");
 	}

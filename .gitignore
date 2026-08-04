@@ -7,3 +7,4 @@ npm-debug.log
 /lib
 /index.ts
 /tsconfig.tsbuildinfo
+.claude
