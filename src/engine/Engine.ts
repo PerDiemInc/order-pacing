@@ -5,7 +5,7 @@ import { BUSY_TIMES_RETENTION_SECONDS, ORDERS_RETENTION_SECONDS, TIME_FRAME_SECO
 import { decodeBusyTime, decodeOrder, encodeBusyTime, encodeOrder } from "../encoder";
 import { type Logger, noopLogger } from "../logger";
 import type { Rule } from "../rules/types";
-import { matchesTags, secondsToDate, toSeconds } from "../utils";
+import { matchesCategories, matchesTags, secondsToDate, toSeconds } from "../utils";
 import EngineRules from "./EngineRules";
 import { type BusyTime, type InputOrder, type Order, OrderSource, TimeframeMode, type TimeWindow } from "./types";
 
@@ -272,6 +272,7 @@ export class Engine {
 	public async validateOrderTime(
 		orderTime: Date,
 		tags: string[] = [],
+		categoryIds?: string[],
 	): Promise<{ waitPeriodSeconds: number; ordersInWindow: number }> {
 		if (!(orderTime instanceof Date) || Number.isNaN(orderTime.getTime())) {
 			throw new TypeError("orderTime must be a valid Date");
@@ -281,8 +282,19 @@ export class Engine {
 			throw new TypeError("tags must be an array of non-empty strings");
 		}
 
+		if (
+			categoryIds !== undefined &&
+			(!Array.isArray(categoryIds) ||
+				categoryIds.some((categoryId) => typeof categoryId !== "string" || categoryId.length === 0))
+		) {
+			throw new TypeError("categoryIds must be an array of non-empty strings");
+		}
+
 		const orderTimeSeconds = toSeconds(orderTime);
-		const busyTimes = (await this.getBusyTimes()).filter((busyTime) => matchesTags(busyTime.scope, tags));
+		const busyTimes = (await this.getBusyTimes()).filter(
+			(busyTime) =>
+				matchesTags(busyTime.scope, tags) && matchesCategories(busyTime.threshold?.categoryIds, categoryIds),
+		);
 
 		let waitPeriodSeconds = 0;
 		let ordersInWindow = 0;
