@@ -18,6 +18,12 @@ type EngineParams = {
 	rules?: Rule[];
 };
 
+type ValidateOrderTimeParams = {
+	orderTime: Date;
+	tags?: string[];
+	categoryIds?: string[];
+};
+
 export class Engine {
 	private engineRules: EngineRules;
 
@@ -269,11 +275,11 @@ export class Engine {
 		return orders.sort((a, b) => toSeconds(a.orderTime) - toSeconds(b.orderTime));
 	}
 
-	public async validateOrderTime(
-		orderTime: Date,
-		tags: string[] = [],
-		categoryIds?: string[],
-	): Promise<{ waitPeriodSeconds: number; ordersInWindow: number }> {
+	public async validateOrderTime({
+		orderTime,
+		tags = [],
+		categoryIds,
+	}: ValidateOrderTimeParams): Promise<{ waitPeriodSeconds: number; ordersInWindow: number }> {
 		if (!(orderTime instanceof Date) || Number.isNaN(orderTime.getTime())) {
 			throw new TypeError("orderTime must be a valid Date");
 		}
