@@ -171,12 +171,12 @@ Returns an array of order entries:
 ]
 ```
 
-### `validateOrderTime(orderTime, tags?)`
+### `validateOrderTime(orderTime, tags?, categoryIds?)`
 
-Checks if an order placed at the given time would fall within a busy period that applies to its tags (`tags` defaults to `[]`). Only busy periods whose scope matches are considered — a `['delivery']`-scoped busy period never delays a pickup order. Consecutive matching busy periods chain: if pushing the order past one period lands it inside the next, the wait extends until the first free moment. Already-ended busy periods are ignored. Throws a `TypeError` if `orderTime` is not a valid `Date` or `tags` is not an array of non-empty strings. Returns wait period information:
+Checks if an order placed at the given time would fall within a busy period that applies to its tags (`tags` defaults to `[]`). Only busy periods whose scope matches are considered — a `['delivery']`-scoped busy period never delays a pickup order. Pass the categories of the order's items as `categoryIds` and a busy period from a rule limited to categories (`threshold.categoryIds`) only delays orders holding one of them; without `categoryIds`, every busy period counts whatever its categories. Consecutive matching busy periods chain: if pushing the order past one period lands it inside the next, the wait extends until the first free moment. Already-ended busy periods are ignored. Throws a `TypeError` if `orderTime` is not a valid `Date`, or `tags` or `categoryIds` is not an array of non-empty strings. Returns wait period information:
 
 ```typescript
-const validation = await engine.validateOrderTime(new Date(), ['delivery']);
+const validation = await engine.validateOrderTime(new Date(), ['delivery'], ['cat-1']);
 
 {
   waitPeriodSeconds: number,  // Seconds to wait until one second past the last delaying busy period (0 if not busy)

@@ -17,3 +17,11 @@ export function timeStringToMinutes(timeString: string): number {
 export function matchesTags(ruleTags: string[], tags: string[]): boolean {
 	return ruleTags.every((ruleTag) => tags.includes(ruleTag));
 }
+
+export function matchesCategories(ruleCategoryIds: string[] = [], categoryIds?: string[]): boolean {
+	if (!categoryIds || ruleCategoryIds.length === 0) {
+		return true;
+	}
+
+	return ruleCategoryIds.some((ruleCategoryId) => categoryIds.includes(ruleCategoryId));
+}

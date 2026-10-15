@@ -50,6 +50,7 @@ async function seedBusyTime(
 	endTime: Date,
 	totalOrders = 5,
 	scope: string[] = [],
+	categoryIds: string[] = [],
 ): Promise<void> {
 	const busyTime: BusyTime = {
 		busyTimeId: randomUUID(),
@@ -61,7 +62,7 @@ async function seedBusyTime(
 		busyTimeSeconds: toSeconds(endTime) - toSeconds(startTime),
 		scope,
 		busyTimeContext: { totalAmountCents: 0, totalItems: 0, totalOrders, categoryIds: [] },
-		threshold: { type: "orders", value: totalOrders, limit: 3, categoryIds: [] },
+		threshold: { type: "orders", value: totalOrders, limit: 3, categoryIds },
 	};
 
 	await redis.zadd(`busytimes:${bucket}`, toSeconds(endTime), encodeBusyTime(busyTime));
@@ -547,12 +548,98 @@ describe("Engine.validateOrderTime", () => {
 		expect(result.waitPeriodSeconds).to.equal(toSeconds(secondEnd) + 1 - toSeconds(orderTime));
 	});
 
+	it("applies category-limited windows only to orders holding one of those categories", async () => {
+		const { engine, redis, bucket } = createEngine([baseRule()]);
+		const now = Date.now();
+		const end = new Date(now + 10 * MINUTE_MS);
+
+		await seedBusyTime(redis, bucket, new Date(now - 5 * MINUTE_MS), end, 5, ["pickup"], ["sweet"]);
+
+		const sweet = await engine.validateOrderTime(new Date(now), ["pickup"], ["fancy", "sweet"]);
+		const fancy = await engine.validateOrderTime(new Date(now), ["pickup"], ["fancy"]);
+		const noCategories = await engine.validateOrderTime(new Date(now), ["pickup"], []);
+
+		expect(sweet.waitPeriodSeconds).to.equal(toSeconds(end) + 1 - toSeconds(now));
+		expect(fancy).to.deep.equal({ waitPeriodSeconds: 0, ordersInWindow: 0 });
+		expect(noCategories).to.deep.equal({ waitPeriodSeconds: 0, ordersInWindow: 0 });
+	});
+
+	it("applies windows without categories to every order", async () => {
+		const { engine, redis, bucket } = createEngine([baseRule()]);
+		const now = Date.now();
+		const end = new Date(now + 10 * MINUTE_MS);
+
+		await seedBusyTime(redis, bucket, new Date(now - 5 * MINUTE_MS), end, 5, ["pickup"]);
+
+		const result = await engine.validateOrderTime(new Date(now), ["pickup"], ["fancy"]);
+
+		expect(result.waitPeriodSeconds).to.equal(toSeconds(end) + 1 - toSeconds(now));
+	});
+
+	it("applies category-limited windows to every order when no categories are given", async () => {
+		const { engine, redis, bucket } = createEngine([baseRule()]);
+		const now = Date.now();
+		const end = new Date(now + 10 * MINUTE_MS);
+
+		await seedBusyTime(redis, bucket, new Date(now - 5 * MINUTE_MS), end, 5, ["pickup"], ["sweet"]);
+
+		const result = await engine.validateOrderTime(new Date(now), ["pickup"]);
+
+		expect(result.waitPeriodSeconds).to.equal(toSeconds(end) + 1 - toSeconds(now));
+	});
+
+	it("chains windows for the order's categories across windows for other categories", async () => {
+		const { engine, redis, bucket } = createEngine([baseRule()]);
+		const now = Date.now();
+		const secondEnd = new Date(now + 20 * MINUTE_MS);
+
+		await seedBusyTime(redis, bucket, new Date(now - 5 * MINUTE_MS), new Date(now + 10 * MINUTE_MS), 5, [], ["fancy"]);
+		await seedBusyTime(redis, bucket, new Date(now + 2 * MINUTE_MS), new Date(now + 30 * MINUTE_MS), 5, [], ["sweet"]);
+		await seedBusyTime(redis, bucket, new Date(now + 10 * MINUTE_MS), secondEnd, 5, [], ["fancy"]);
+
+		const orderTime = new Date(now);
+		const result = await engine.validateOrderTime(orderTime, ["pickup"], ["fancy"]);
+
+		expect(result.waitPeriodSeconds).to.equal(toSeconds(secondEnd) + 1 - toSeconds(orderTime));
+	});
+
+	it("delays only orders holding the categories of the rule that made the time busy", async () => {
+		const { engine } = createEngine([baseRule({ categoryIds: ["sweet"], maxOrders: 1 })]);
+		const now = new Date();
+
+		await engine.add(
+			makeOrder({
+				orderTime: now,
+				items: [{ itemId: "item-1", quantity: 1, totalAmountCents: 1000, categoryId: "sweet" }],
+			}),
+		);
+
+		const sweet = await engine.validateOrderTime(now, ["pickup"], ["sweet"]);
+		const fancy = await engine.validateOrderTime(now, ["pickup"], ["fancy"]);
+
+		expect(sweet.waitPeriodSeconds).to.be.greaterThan(0);
+		expect(fancy).to.deep.equal({ waitPeriodSeconds: 0, ordersInWindow: 0 });
+	});
+
 	it("throws on invalid tags", async () => {
 		const { engine } = createEngine([baseRule()]);
 		let thrown: unknown;
 
 		try {
 			await engine.validateOrderTime(new Date(), [""]);
+		} catch (error) {
+			thrown = error;
+		}
+
+		expect(thrown).to.be.instanceOf(TypeError);
+	});
+
+	it("throws on invalid categoryIds", async () => {
+		const { engine } = createEngine([baseRule()]);
+		let thrown: unknown;
+
+		try {
+			await engine.validateOrderTime(new Date(), ["pickup"], [""]);
 		} catch (error) {
 			thrown = error;
 		}

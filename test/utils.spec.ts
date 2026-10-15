@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { describe, it } from "mocha";
-import { secondsToDate, timeStringToMinutes, toSeconds } from "../src/utils";
+import { matchesCategories, secondsToDate, timeStringToMinutes, toSeconds } from "../src/utils";
 
 describe("toSeconds", () => {
 	it("should convert Date object to seconds", () => {
@@ -94,5 +94,26 @@ describe("timeStringToMinutes", () => {
 		expect(timeStringToMinutes("12:30:30")).to.equal(750);
 		expect(timeStringToMinutes("09:30:00")).to.equal(570);
 		expect(timeStringToMinutes("23:59:59")).to.equal(1439);
+	});
+});
+
+describe("matchesCategories", () => {
+	it("matches every order when the rule has no categories", () => {
+		expect(matchesCategories([], ["sweet"])).to.equal(true);
+		expect(matchesCategories([], [])).to.equal(true);
+	});
+
+	it("matches an order holding one of the rule's categories", () => {
+		expect(matchesCategories(["sweet", "bitter"], ["fancy", "bitter"])).to.equal(true);
+	});
+
+	it("does not match an order without the rule's categories", () => {
+		expect(matchesCategories(["sweet"], ["fancy"])).to.equal(false);
+		expect(matchesCategories(["sweet"], [])).to.equal(false);
+	});
+
+	it("matches every rule when the order's categories are not given", () => {
+		expect(matchesCategories(["sweet"])).to.equal(true);
+		expect(matchesCategories(undefined, undefined)).to.equal(true);
 	});
 });
