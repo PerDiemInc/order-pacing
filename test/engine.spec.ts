@@ -431,7 +431,7 @@ describe("Engine.validateOrderTime", () => {
 		let thrown: unknown;
 
 		try {
-			await engine.validateOrderTime(new Date("garbage"), ["pickup"]);
+			await engine.validateOrderTime({ orderTime: new Date("garbage"), tags: ["pickup"] });
 		} catch (error) {
 			thrown = error;
 		}
@@ -442,7 +442,7 @@ describe("Engine.validateOrderTime", () => {
 	it("returns zero wait when there are no busy times", async () => {
 		const { engine } = createEngine([baseRule()]);
 
-		const result = await engine.validateOrderTime(new Date(), ["pickup"]);
+		const result = await engine.validateOrderTime({ orderTime: new Date(), tags: ["pickup"] });
 
 		expect(result).to.deep.equal({ waitPeriodSeconds: 0, ordersInWindow: 0 });
 	});
@@ -454,7 +454,7 @@ describe("Engine.validateOrderTime", () => {
 
 		await seedBusyTime(redis, bucket, new Date(now.getTime() - 5 * MINUTE_MS), end, 7);
 
-		const result = await engine.validateOrderTime(now, ["pickup"]);
+		const result = await engine.validateOrderTime({ orderTime: now, tags: ["pickup"] });
 
 		expect(result.waitPeriodSeconds).to.equal(toSeconds(end) + 1 - toSeconds(now));
 		expect(result.ordersInWindow).to.equal(7);
@@ -471,7 +471,7 @@ describe("Engine.validateOrderTime", () => {
 		await seedBusyTime(redis, bucket, new Date(now + 6 * hour), new Date(now + 8 * hour));
 
 		const orderTime = new Date(now + 2.5 * hour);
-		const result = await engine.validateOrderTime(orderTime, ["pickup"]);
+		const result = await engine.validateOrderTime({ orderTime, tags: ["pickup"] });
 
 		expect(result.waitPeriodSeconds).to.equal(toSeconds(new Date(now + 4 * hour)) + 1 - toSeconds(orderTime));
 	});
@@ -486,7 +486,7 @@ describe("Engine.validateOrderTime", () => {
 		await seedBusyTime(redis, bucket, new Date(now - 10 * MINUTE_MS), activeEnd, 4);
 
 		const orderTime = new Date(now);
-		const result = await engine.validateOrderTime(orderTime, ["pickup"]);
+		const result = await engine.validateOrderTime({ orderTime, tags: ["pickup"] });
 
 		expect(result.waitPeriodSeconds).to.equal(toSeconds(activeEnd) + 1 - toSeconds(orderTime));
 		expect(result.ordersInWindow).to.equal(4);
@@ -498,7 +498,7 @@ describe("Engine.validateOrderTime", () => {
 
 		await seedBusyTime(redis, bucket, new Date(now + 60 * MINUTE_MS), new Date(now + 90 * MINUTE_MS));
 
-		const result = await engine.validateOrderTime(new Date(now), ["pickup"]);
+		const result = await engine.validateOrderTime({ orderTime: new Date(now), tags: ["pickup"] });
 
 		expect(result).to.deep.equal({ waitPeriodSeconds: 0, ordersInWindow: 0 });
 	});
@@ -510,8 +510,8 @@ describe("Engine.validateOrderTime", () => {
 
 		await seedBusyTime(redis, bucket, new Date(now - 5 * MINUTE_MS), end, 5, ["delivery"]);
 
-		const delivery = await engine.validateOrderTime(new Date(now), ["delivery"]);
-		const pickup = await engine.validateOrderTime(new Date(now), ["pickup"]);
+		const delivery = await engine.validateOrderTime({ orderTime: new Date(now), tags: ["delivery"] });
+		const pickup = await engine.validateOrderTime({ orderTime: new Date(now), tags: ["pickup"] });
 
 		expect(delivery.waitPeriodSeconds).to.equal(toSeconds(end) + 1 - toSeconds(now));
 		expect(pickup).to.deep.equal({ waitPeriodSeconds: 0, ordersInWindow: 0 });
@@ -524,8 +524,8 @@ describe("Engine.validateOrderTime", () => {
 
 		await seedBusyTime(redis, bucket, new Date(now - 5 * MINUTE_MS), end, 5, ["delivery", "catering"]);
 
-		const catering = await engine.validateOrderTime(new Date(now), ["delivery", "catering"]);
-		const regular = await engine.validateOrderTime(new Date(now), ["delivery"]);
+		const catering = await engine.validateOrderTime({ orderTime: new Date(now), tags: ["delivery", "catering"] });
+		const regular = await engine.validateOrderTime({ orderTime: new Date(now), tags: ["delivery"] });
 
 		expect(catering.waitPeriodSeconds).to.equal(toSeconds(end) + 1 - toSeconds(now));
 		expect(regular).to.deep.equal({ waitPeriodSeconds: 0, ordersInWindow: 0 });
@@ -543,7 +543,7 @@ describe("Engine.validateOrderTime", () => {
 		await seedBusyTime(redis, bucket, new Date(now + 10 * MINUTE_MS), secondEnd, 5, deliveryScope);
 
 		const orderTime = new Date(now);
-		const result = await engine.validateOrderTime(orderTime, ["delivery"]);
+		const result = await engine.validateOrderTime({ orderTime, tags: ["delivery"] });
 
 		expect(result.waitPeriodSeconds).to.equal(toSeconds(secondEnd) + 1 - toSeconds(orderTime));
 	});
@@ -555,9 +555,21 @@ describe("Engine.validateOrderTime", () => {
 
 		await seedBusyTime(redis, bucket, new Date(now - 5 * MINUTE_MS), end, 5, ["pickup"], ["sweet"]);
 
-		const sweet = await engine.validateOrderTime(new Date(now), ["pickup"], ["fancy", "sweet"]);
-		const fancy = await engine.validateOrderTime(new Date(now), ["pickup"], ["fancy"]);
-		const noCategories = await engine.validateOrderTime(new Date(now), ["pickup"], []);
+		const sweet = await engine.validateOrderTime({
+			orderTime: new Date(now),
+			tags: ["pickup"],
+			categoryIds: ["fancy", "sweet"],
+		});
+		const fancy = await engine.validateOrderTime({
+			orderTime: new Date(now),
+			tags: ["pickup"],
+			categoryIds: ["fancy"],
+		});
+		const noCategories = await engine.validateOrderTime({
+			orderTime: new Date(now),
+			tags: ["pickup"],
+			categoryIds: [],
+		});
 
 		expect(sweet.waitPeriodSeconds).to.equal(toSeconds(end) + 1 - toSeconds(now));
 		expect(fancy).to.deep.equal({ waitPeriodSeconds: 0, ordersInWindow: 0 });
@@ -571,7 +583,11 @@ describe("Engine.validateOrderTime", () => {
 
 		await seedBusyTime(redis, bucket, new Date(now - 5 * MINUTE_MS), end, 5, ["pickup"]);
 
-		const result = await engine.validateOrderTime(new Date(now), ["pickup"], ["fancy"]);
+		const result = await engine.validateOrderTime({
+			orderTime: new Date(now),
+			tags: ["pickup"],
+			categoryIds: ["fancy"],
+		});
 
 		expect(result.waitPeriodSeconds).to.equal(toSeconds(end) + 1 - toSeconds(now));
 	});
@@ -583,7 +599,7 @@ describe("Engine.validateOrderTime", () => {
 
 		await seedBusyTime(redis, bucket, new Date(now - 5 * MINUTE_MS), end, 5, ["pickup"], ["sweet"]);
 
-		const result = await engine.validateOrderTime(new Date(now), ["pickup"]);
+		const result = await engine.validateOrderTime({ orderTime: new Date(now), tags: ["pickup"] });
 
 		expect(result.waitPeriodSeconds).to.equal(toSeconds(end) + 1 - toSeconds(now));
 	});
@@ -598,7 +614,7 @@ describe("Engine.validateOrderTime", () => {
 		await seedBusyTime(redis, bucket, new Date(now + 10 * MINUTE_MS), secondEnd, 5, [], ["fancy"]);
 
 		const orderTime = new Date(now);
-		const result = await engine.validateOrderTime(orderTime, ["pickup"], ["fancy"]);
+		const result = await engine.validateOrderTime({ orderTime, tags: ["pickup"], categoryIds: ["fancy"] });
 
 		expect(result.waitPeriodSeconds).to.equal(toSeconds(secondEnd) + 1 - toSeconds(orderTime));
 	});
@@ -614,8 +630,8 @@ describe("Engine.validateOrderTime", () => {
 			}),
 		);
 
-		const sweet = await engine.validateOrderTime(now, ["pickup"], ["sweet"]);
-		const fancy = await engine.validateOrderTime(now, ["pickup"], ["fancy"]);
+		const sweet = await engine.validateOrderTime({ orderTime: now, tags: ["pickup"], categoryIds: ["sweet"] });
+		const fancy = await engine.validateOrderTime({ orderTime: now, tags: ["pickup"], categoryIds: ["fancy"] });
 
 		expect(sweet.waitPeriodSeconds).to.be.greaterThan(0);
 		expect(fancy).to.deep.equal({ waitPeriodSeconds: 0, ordersInWindow: 0 });
@@ -626,7 +642,7 @@ describe("Engine.validateOrderTime", () => {
 		let thrown: unknown;
 
 		try {
-			await engine.validateOrderTime(new Date(), [""]);
+			await engine.validateOrderTime({ orderTime: new Date(), tags: [""] });
 		} catch (error) {
 			thrown = error;
 		}
@@ -639,7 +655,7 @@ describe("Engine.validateOrderTime", () => {
 		let thrown: unknown;
 
 		try {
-			await engine.validateOrderTime(new Date(), ["pickup"], [""]);
+			await engine.validateOrderTime({ orderTime: new Date(), tags: ["pickup"], categoryIds: [""] });
 		} catch (error) {
 			thrown = error;
 		}
