@@ -18,8 +18,6 @@ export function matchesTags(ruleTags: string[], tags: string[]): boolean {
 	return ruleTags.every((ruleTag) => tags.includes(ruleTag));
 }
 
-// A rule limited to categories only counts for orders holding one of them. Without the order's
-// categories (undefined), every rule counts.
 export function matchesCategories(ruleCategoryIds: string[] = [], categoryIds?: string[]): boolean {
 	if (!categoryIds || ruleCategoryIds.length === 0) {
 		return true;
