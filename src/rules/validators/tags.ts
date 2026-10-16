@@ -10,8 +10,14 @@ export const validateTags: RuleValidator = (rule) => {
 	}
 
 	for (const tag of rule.tags) {
-		if (typeof tag !== "string" || tag.trim().length === 0) {
-			throw new Error("tags must contain non-empty strings");
+		if (Array.isArray(tag) && tag.length === 0) {
+			throw new Error("tags must not contain an empty list");
+		}
+
+		for (const alternative of Array.isArray(tag) ? tag : [tag]) {
+			if (typeof alternative !== "string" || alternative.trim().length === 0) {
+				throw new Error("tags must contain non-empty strings");
+			}
 		}
 	}
 };

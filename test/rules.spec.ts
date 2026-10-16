@@ -81,6 +81,14 @@ describe("EngineRule.applyCheck", () => {
 		expect(engineRule.applyCheck(makeOrder({ tags: ["pickup", "catering"] }), "UTC")).to.equal(false);
 	});
 
+	it("applies to orders carrying any tag of a list", () => {
+		const engineRule = new EngineRule(baseRule({ tags: [["delivery", "curbside"]] }));
+
+		expect(engineRule.applyCheck(makeOrder({ tags: ["delivery"] }), "UTC")).to.equal(true);
+		expect(engineRule.applyCheck(makeOrder({ tags: ["curbside"] }), "UTC")).to.equal(true);
+		expect(engineRule.applyCheck(makeOrder({ tags: ["pickup"] }), "UTC")).to.equal(false);
+	});
+
 	it("treats startTime and endTime boundaries as inclusive", () => {
 		expect(new EngineRule(baseRule({ startTime: "13:44" })).applyCheck(makeOrder(), "UTC")).to.equal(true);
 		expect(new EngineRule(baseRule({ endTime: "13:44" })).applyCheck(makeOrder(), "UTC")).to.equal(true);
@@ -117,6 +125,18 @@ describe("EngineRule.thresholdCheck", () => {
 
 		expect(engineRule.thresholdCheck([makeOrder(), makeOrder(), catering])).to.equal(null);
 		expect(engineRule.thresholdCheck([makeOrder(), catering, catering])?.threshold.type).to.equal("orders");
+	});
+
+	it("counts orders carrying any tag of a list together", () => {
+		const engineRule = new EngineRule(baseRule({ tags: [["delivery", "curbside"]], maxOrders: 2 }));
+		const delivery = makeOrder({ tags: ["delivery"] });
+		const curbside = makeOrder({ tags: ["curbside"] });
+
+		expect(engineRule.thresholdCheck([makeOrder(), makeOrder(), delivery])).to.equal(null);
+		expect(engineRule.thresholdCheck([makeOrder(), delivery, curbside])?.threshold).to.deep.include({
+			type: "orders",
+			value: 2,
+		});
 	});
 
 	it("combines tags and category filters for item counting", () => {
@@ -266,6 +286,10 @@ describe("defaultRuleSet.validate", () => {
 		expect(() => defaultRuleSet.validate(rule)).to.not.throw();
 	});
 
+	it("accepts lists of alternative tags", () => {
+		expect(() => defaultRuleSet.validate(baseRule({ tags: [["delivery", "curbside"], "catering"] }))).to.not.throw();
+	});
+
 	it("rejects non-array categoryIds and weekDays", () => {
 		expect(() => defaultRuleSet.validate(baseRule({ categoryIds: "cat-1" as unknown as string[] }))).to.throw(/array/);
 		expect(() => defaultRuleSet.validate(baseRule({ weekDays: 3 as unknown as number[] }))).to.throw(/array/);
@@ -281,6 +305,8 @@ describe("defaultRuleSet.validate", () => {
 		{ name: "zero maxAmountCents", rule: baseRule({ maxAmountCents: 0 }) },
 		{ name: "out-of-range weekDays", rule: baseRule({ weekDays: [7] }) },
 		{ name: "empty tag value", rule: baseRule({ tags: [""] }) },
+		{ name: "empty tag list", rule: baseRule({ tags: [[]] }) },
+		{ name: "empty tag in a list", rule: baseRule({ tags: [["delivery", ""]] }) },
 		{
 			name: "non-array tags",
 			rule: baseRule({ tags: "delivery" as unknown as string[] }),

@@ -1,6 +1,6 @@
 import { getDay, getHours, getMinutes } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
-import type { Rule } from "../rules/types";
+import type { Rule, RuleTag } from "../rules/types";
 import { matchesTags, timeStringToMinutes } from "../utils";
 import type { BusyTimeContext, Order, Threshold } from "./types";
 
@@ -11,7 +11,7 @@ export default class EngineRule {
 		this.rule = rule;
 	}
 
-	public get scope(): string[] {
+	public get scope(): RuleTag[] {
 		return this.rule.tags ?? [];
 	}
 

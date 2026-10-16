@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { describe, it } from "mocha";
-import { matchesCategories, secondsToDate, timeStringToMinutes, toSeconds } from "../src/utils";
+import { matchesCategories, matchesTags, secondsToDate, timeStringToMinutes, toSeconds } from "../src/utils";
 
 describe("toSeconds", () => {
 	it("should convert Date object to seconds", () => {
@@ -115,5 +115,27 @@ describe("matchesCategories", () => {
 	it("matches every rule when the order's categories are not given", () => {
 		expect(matchesCategories(["sweet"])).to.equal(true);
 		expect(matchesCategories(undefined, undefined)).to.equal(true);
+	});
+});
+
+describe("matchesTags", () => {
+	it("matches every order when the rule has no tags", () => {
+		expect(matchesTags([], ["pickup"])).to.equal(true);
+	});
+
+	it("needs every plain tag on the order", () => {
+		expect(matchesTags(["delivery", "catering"], ["delivery", "catering"])).to.equal(true);
+		expect(matchesTags(["delivery", "catering"], ["delivery"])).to.equal(false);
+	});
+
+	it("matches a list of tags when the order carries any one of them", () => {
+		expect(matchesTags([["delivery", "curbside"]], ["delivery"])).to.equal(true);
+		expect(matchesTags([["delivery", "curbside"]], ["curbside"])).to.equal(true);
+		expect(matchesTags([["delivery", "curbside"]], ["pickup"])).to.equal(false);
+	});
+
+	it("needs a list and every plain tag together", () => {
+		expect(matchesTags([["delivery", "curbside"], "catering"], ["curbside", "catering"])).to.equal(true);
+		expect(matchesTags([["delivery", "curbside"], "catering"], ["curbside", "non-catering"])).to.equal(false);
 	});
 });

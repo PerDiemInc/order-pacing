@@ -335,6 +335,23 @@ describe("tags encoding", () => {
 		expect(decodeBusyTime(encodeBusyTime(busyTime)).scope).to.deep.equal(busyTime.scope);
 	});
 
+	it("should round-trip a scope holding a list of tags", () => {
+		const busyTime: BusyTime = {
+			busyTimeId: "busy-2",
+			ruleId: "rule-1",
+			startTime: baseDate,
+			endTime: new Date(baseDate.getTime() + 900000),
+			orderTimeSeconds: baseTimeSeconds,
+			currentTimeSeconds: baseTimeSeconds,
+			busyTimeSeconds: 900,
+			scope: [["delivery", "curbside"], "non-catering"],
+			busyTimeContext: { totalAmountCents: 1000, totalItems: 1, totalOrders: 1, categoryIds: [] },
+			threshold: { type: "orders", value: 2, limit: 2, categoryIds: [] },
+		};
+
+		expect(decodeBusyTime(encodeBusyTime(busyTime)).scope).to.deep.equal(busyTime.scope);
+	});
+
 	it("should decode legacy busy times without a scope as applying to everything", () => {
 		const legacyBuffer = packr.pack({
 			id: "busy-legacy",
