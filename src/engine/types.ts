@@ -1,3 +1,5 @@
+import type { RuleTag } from "../rules/types";
+
 export enum TimeframeMode {
 	CENTERED = "centered",
 	BEFORE_ONLY = "before_only",
@@ -57,7 +59,7 @@ export interface BusyTime {
 	orderTimeSeconds: number;
 	currentTimeSeconds: number;
 	busyTimeSeconds: number;
-	scope: string[];
+	scope: RuleTag[];
 	busyTimeContext: BusyTimeContext;
 	threshold: Threshold;
 }

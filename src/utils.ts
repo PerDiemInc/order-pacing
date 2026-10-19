@@ -1,3 +1,5 @@
+import type { RuleTag } from "./rules/types";
+
 export function toSeconds(date: Date | number): number {
 	const milliseconds = typeof date === "number" ? date : date.getTime();
 
@@ -14,8 +16,10 @@ export function timeStringToMinutes(timeString: string): number {
 	return hours * 60 + minutes;
 }
 
-export function matchesTags(ruleTags: string[], tags: string[]): boolean {
-	return ruleTags.every((ruleTag) => tags.includes(ruleTag));
+export function matchesTags(ruleTags: RuleTag[], tags: string[]): boolean {
+	return ruleTags.every((ruleTag) =>
+		Array.isArray(ruleTag) ? ruleTag.some((tag) => tags.includes(tag)) : tags.includes(ruleTag),
+	);
 }
 
 export function matchesCategories(ruleCategoryIds: string[] = [], categoryIds?: string[]): boolean {

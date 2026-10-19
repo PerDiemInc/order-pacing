@@ -6,7 +6,7 @@ import { encodeBusyTime } from "../src/encoder";
 import { Engine } from "../src/engine";
 import type { BusyTime, InputOrder } from "../src/engine/types";
 import { OrderSource, TimeframeMode } from "../src/engine/types";
-import type { Rule } from "../src/rules/types";
+import type { Rule, RuleTag } from "../src/rules/types";
 import { toSeconds } from "../src/utils";
 
 const MINUTE_MS = 60 * 1000;
@@ -49,7 +49,7 @@ async function seedBusyTime(
 	startTime: Date,
 	endTime: Date,
 	totalOrders = 5,
-	scope: string[] = [],
+	scope: RuleTag[] = [],
 	categoryIds: string[] = [],
 ): Promise<void> {
 	const busyTime: BusyTime = {
@@ -397,6 +397,23 @@ describe("Engine fulfillment and catering rules", () => {
 
 		expect(await engine.getBusyTimes()).to.have.length(1);
 	});
+
+	it("counts every type in a rule's tag list toward one limit, and no others", async () => {
+		const { engine } = createEngine([baseRule({ tags: [["delivery", "curbside"]], maxOrders: 2 })]);
+		const now = Date.now();
+
+		await engine.add(makeOrder({ orderTime: new Date(now - 3 * MINUTE_MS), tags: ["pickup"] }));
+		await engine.add(makeOrder({ orderTime: new Date(now - 2 * MINUTE_MS), tags: ["delivery"] }));
+
+		expect(await engine.getBusyTimes()).to.have.length(0);
+
+		await engine.add(makeOrder({ orderTime: new Date(now), tags: ["curbside"] }));
+
+		const busyTimes = await engine.getBusyTimes();
+
+		expect(busyTimes).to.have.length(1);
+		expect(busyTimes[0].scope).to.deep.equal([["delivery", "curbside"]]);
+	});
 });
 
 describe("Engine busy time anchoring", () => {
@@ -529,6 +546,23 @@ describe("Engine.validateOrderTime", () => {
 
 		expect(catering.waitPeriodSeconds).to.equal(toSeconds(end) + 1 - toSeconds(now));
 		expect(regular).to.deep.equal({ waitPeriodSeconds: 0, ordersInWindow: 0 });
+	});
+
+	it("delays every type in a window's tag list, and no others", async () => {
+		const { engine, redis, bucket } = createEngine([baseRule()]);
+		const now = Date.now();
+		const end = new Date(now + 10 * MINUTE_MS);
+
+		await seedBusyTime(redis, bucket, new Date(now - 5 * MINUTE_MS), end, 5, [["delivery", "curbside"]]);
+
+		const wait = toSeconds(end) + 1 - toSeconds(now);
+		const delivery = await engine.validateOrderTime({ orderTime: new Date(now), tags: ["delivery"] });
+		const curbside = await engine.validateOrderTime({ orderTime: new Date(now), tags: ["curbside"] });
+		const pickup = await engine.validateOrderTime({ orderTime: new Date(now), tags: ["pickup"] });
+
+		expect(delivery.waitPeriodSeconds).to.equal(wait);
+		expect(curbside.waitPeriodSeconds).to.equal(wait);
+		expect(pickup).to.deep.equal({ waitPeriodSeconds: 0, ordersInWindow: 0 });
 	});
 
 	it("chains same-scope windows across windows scoped to other types", async () => {

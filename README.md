@@ -92,7 +92,7 @@ Creates a new Engine instance.
   ```
   At least one threshold (`maxOrders`, `maxItems`, or `maxAmountCents`) must be set. When any threshold is reached (`>=`) within the time window — the order being added counts toward its own window — the busy time is applied. Multiple rules can be set to handle different scenarios; each matching rule creates its own busy time. The constructor throws if any rule is invalid, naming the offending rule.
 
-  A rule scoped by `tags` only counts matching orders toward its thresholds, only trips on matching orders, and its busy times only delay matching orders — a `['delivery']` cap never blocks pickups. An order matches when it carries every rule tag; tag vocabulary is the consumer's to define (e.g. `pickup`, `delivery`, `catering`). All rule filters combine with AND.
+  A rule scoped by `tags` only counts matching orders toward its thresholds, only trips on matching orders, and its busy times only delay matching orders — a `['delivery']` cap never blocks pickups. An order matches when it carries every rule tag; tag vocabulary is the consumer's to define (e.g. `pickup`, `delivery`, `catering`). A rule tag can also be a list of tags, which an order matches by carrying any one of them: `tags: [['delivery', 'curbside'], 'catering']` counts and delays catering orders that are delivery or curbside, together under one limit. All rule filters combine with AND.
 - `logger`: Optional logger instance (defaults to a noop logger; a `consoleLogger` is also exported)
 
 ### `add(inputOrder)`
@@ -131,7 +131,7 @@ Returns an array of busy time entries:
     orderTimeSeconds: number,     // Order time in seconds
     currentTimeSeconds: number,   // Current time in seconds when busy time was created
     busyTimeSeconds: number,      // Duration in seconds
-    scope: string[],              // The tripping rule's tags; only matching orders are delayed ([] = all)
+    scope: RuleTag[],             // The tripping rule's tags; only matching orders are delayed ([] = all)
     busyTimeContext: {
       totalAmountCents: number,   // Total amount in cents from all orders in the time window
       totalItems: number,         // Total items from all orders in the time window
