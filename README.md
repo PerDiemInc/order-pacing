@@ -62,7 +62,7 @@ const stats = await engine.getOrdersStats(
 
 ## API
 
-### `new Engine({ redis, bucket, timeframeMode?, timeZone?, rules?, logger? })`
+### `new Engine({ redis, bucket, timeframeMode?, busyTimeMode?, timeZone?, rules?, logger? })`
 
 Creates a new Engine instance.
 
@@ -73,6 +73,13 @@ Creates a new Engine instance.
   - `TimeframeMode.CENTERED`: Half of `timeFrameMinutes` on each side of order time (~`timeFrameMinutes` total)
   - `TimeframeMode.AFTER_ONLY`: Look forward `timeFrameMinutes` from order time
   - `TimeframeMode.BEFORE_AND_AFTER`: `timeFrameMinutes` on each side of order time (~2x `timeFrameMinutes` total)
+- `busyTimeMode`: Optional. Where a tripped rule's busy period sits around the order that tripped it, with the same options:
+  - `TimeframeMode.BEFORE_ONLY` (default): the `busyTimeMinutes` before the order
+  - `TimeframeMode.AFTER_ONLY`: the `busyTimeMinutes` after it
+  - `TimeframeMode.CENTERED`: half of `busyTimeMinutes` on each side
+  - `TimeframeMode.BEFORE_AND_AFTER`: `busyTimeMinutes` on each side, so an order ready a few minutes after a booked one waits too, not just one ready a few minutes before it
+
+  Whatever the mode, the period never ends before `busyTimeMinutes` from now.
 - `timeZone`: Optional IANA timezone name, e.g. `'America/New_York'` (defaults to `'UTC'`). Used only to evaluate rule `weekDays`/`startTime`/`endTime` against the order time; all timestamps are stored as UTC epoch seconds.
 - `rules`: Optional array of rules (defaults to `[]`). Rules determine when to apply busy time based on order volume in a time window:
   ```typescript
@@ -97,7 +104,7 @@ Creates a new Engine instance.
 
 ### `add(inputOrder)`
 
-Adds an order to the engine. If a rule's threshold is reached, a busy time period of exactly `busyTimeMinutes` is created, ending at the order's scheduled time or `busyTimeMinutes` from now, whichever is later. Throws a `TypeError` if `orderTime` is not a valid `Date`, `orderId` is empty, or `tags` is not an array of non-empty strings.
+Adds an order to the engine. If a rule's threshold is reached, a busy time period is created around the order's scheduled time as `busyTimeMode` places it (by default the `busyTimeMinutes` before it), ending no earlier than `busyTimeMinutes` from now. Throws a `TypeError` if `orderTime` is not a valid `Date`, `orderId` is empty, or `tags` is not an array of non-empty strings.
 
 ```typescript
 await engine.add({

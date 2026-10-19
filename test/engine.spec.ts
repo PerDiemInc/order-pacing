@@ -23,7 +23,10 @@ function baseRule(overrides: Partial<Rule> = {}): Rule {
 	};
 }
 
-function createEngine(rules: Rule[], opts: { timeframeMode?: TimeframeMode; timeZone?: string } = {}) {
+function createEngine(
+	rules: Rule[],
+	opts: { timeframeMode?: TimeframeMode; busyTimeMode?: TimeframeMode; timeZone?: string } = {},
+) {
 	const bucket = `test:${randomUUID()}`;
 	const redis = new RedisMock() as unknown as Redis;
 	const engine = new Engine({ bucket, redis, rules, ...opts });
@@ -439,6 +442,54 @@ describe("Engine busy time anchoring", () => {
 
 		expect(toSeconds(busyTime.endTime)).to.be.closeTo(toSeconds(now) + 15 * 60, 2);
 		expect(toSeconds(busyTime.endTime) - toSeconds(busyTime.startTime)).to.equal(15 * 60);
+	});
+
+	it("places the busy window around the order by busyTimeMode", async () => {
+		const orderTime = new Date(Date.now() + 60 * MINUTE_MS);
+		const t = toSeconds(orderTime);
+		for (const [busyTimeMode, start, end] of [
+			[TimeframeMode.BEFORE_ONLY, t - 15 * 60, t],
+			[TimeframeMode.AFTER_ONLY, t, t + 15 * 60],
+			[TimeframeMode.CENTERED, t - 450, t + 450],
+			[TimeframeMode.BEFORE_AND_AFTER, t - 15 * 60, t + 15 * 60],
+		] as const) {
+			const { engine } = createEngine([baseRule({ maxOrders: 1 })], { busyTimeMode });
+
+			await engine.add(makeOrder({ orderTime }));
+
+			const [busyTime] = await engine.getBusyTimes();
+			expect([toSeconds(busyTime.startTime), toSeconds(busyTime.endTime)], busyTimeMode).to.deep.equal([start, end]);
+		}
+	});
+
+	it("still blocks the time just ahead for an order placed for right away", async () => {
+		const { engine } = createEngine([baseRule({ maxOrders: 1 })], { busyTimeMode: TimeframeMode.BEFORE_AND_AFTER });
+		const now = Date.now();
+
+		await engine.add(makeOrder({ orderTime: new Date(now) }));
+
+		const [busyTime] = await engine.getBusyTimes();
+		expect(toSeconds(busyTime.endTime)).to.be.closeTo(toSeconds(now) + 15 * 60, 2);
+		expect(toSeconds(busyTime.startTime)).to.be.closeTo(toSeconds(now) - 15 * 60, 2);
+	});
+
+	it("delays an order just after a booked one only with BEFORE_AND_AFTER", async () => {
+		const orderTime = new Date(Date.now() + 120 * MINUTE_MS);
+		const justAfter = new Date(orderTime.getTime() + 3 * MINUTE_MS);
+		const waits: Record<string, number> = {};
+		for (const busyTimeMode of [TimeframeMode.BEFORE_ONLY, TimeframeMode.BEFORE_AND_AFTER]) {
+			const { engine } = createEngine([baseRule({ maxOrders: 1 })], { busyTimeMode });
+			await engine.add(makeOrder({ orderTime }));
+
+			({ waitPeriodSeconds: waits[busyTimeMode] } = await engine.validateOrderTime({
+				orderTime: justAfter,
+				tags: ["pickup"],
+			}));
+		}
+
+		expect(waits[TimeframeMode.BEFORE_ONLY]).to.equal(0);
+		// Until a second past the booked order's slot: 15 minutes after it, 12 after the request.
+		expect(waits[TimeframeMode.BEFORE_AND_AFTER]).to.equal(12 * 60 + 1);
 	});
 });
 

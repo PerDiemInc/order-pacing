@@ -14,6 +14,7 @@ type EngineParams = {
 	redis: Redis;
 	logger?: Logger;
 	timeframeMode?: TimeframeMode;
+	busyTimeMode?: TimeframeMode;
 	timeZone?: string;
 	rules?: Rule[];
 };
@@ -30,6 +31,7 @@ export class Engine {
 	private redis: Redis;
 	private logger: Logger;
 	private timeframeMode: TimeframeMode;
+	private busyTimeMode: TimeframeMode;
 	private timeZone: string;
 
 	private ordersKey: string;
@@ -40,12 +42,14 @@ export class Engine {
 		redis,
 		logger = noopLogger,
 		timeframeMode = TimeframeMode.BEFORE_ONLY,
+		busyTimeMode = TimeframeMode.BEFORE_ONLY,
 		timeZone = "UTC",
 		rules = [],
 	}: EngineParams) {
 		this.redis = redis;
 		this.logger = logger;
 		this.timeframeMode = timeframeMode;
+		this.busyTimeMode = busyTimeMode;
 		this.timeZone = timeZone;
 		this.engineRules = new EngineRules(rules);
 
@@ -85,6 +89,34 @@ export class Engine {
 					end: orderTimeSeconds + timeFrameSeconds,
 				};
 		}
+	}
+
+	/**
+	 * Where a tripped rule's busy period sits around the order that tripped it: `busyTimeMinutes`
+	 * before it (BEFORE_ONLY), after it (AFTER_ONLY), split across it (CENTERED) or on both sides
+	 * (BEFORE_AND_AFTER). It never ends before `busyTimeMinutes` from now, so an order placed for
+	 * right away still blocks the time just ahead.
+	 */
+	private static calculateBusyWindow({
+		orderTimeSeconds,
+		currentTimeSeconds,
+		busyTimeSeconds,
+		busyTimeMode,
+	}: {
+		orderTimeSeconds: number;
+		currentTimeSeconds: number;
+		busyTimeSeconds: number;
+		busyTimeMode: TimeframeMode;
+	}): { startTimeSeconds: number; endTimeSeconds: number } {
+		const [beforeSeconds, afterSeconds] = {
+			[TimeframeMode.BEFORE_ONLY]: [busyTimeSeconds, 0],
+			[TimeframeMode.AFTER_ONLY]: [0, busyTimeSeconds],
+			[TimeframeMode.CENTERED]: [Math.floor(busyTimeSeconds / 2), Math.ceil(busyTimeSeconds / 2)],
+			[TimeframeMode.BEFORE_AND_AFTER]: [busyTimeSeconds, busyTimeSeconds],
+		}[busyTimeMode];
+		const endTimeSeconds = Math.max(orderTimeSeconds + afterSeconds, currentTimeSeconds + busyTimeSeconds);
+
+		return { startTimeSeconds: endTimeSeconds - beforeSeconds - afterSeconds, endTimeSeconds };
 	}
 
 	private async getOrdersInWindow(timeWindow: TimeWindow): Promise<Order[]> {
@@ -182,8 +214,12 @@ export class Engine {
 			}
 
 			const busyTimeSeconds = minutesToSeconds(engineRule.rule.busyTimeMinutes);
-			const endTimeSeconds = Math.max(orderTimeSeconds, currentTimeSeconds + busyTimeSeconds);
-			const startTimeSeconds = endTimeSeconds - busyTimeSeconds;
+			const { startTimeSeconds, endTimeSeconds } = Engine.calculateBusyWindow({
+				orderTimeSeconds,
+				currentTimeSeconds,
+				busyTimeSeconds,
+				busyTimeMode: this.busyTimeMode,
+			});
 
 			await this.addBusyTime({
 				busyTimeId: randomUUID(),
