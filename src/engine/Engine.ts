@@ -217,7 +217,7 @@ export class Engine {
 			const { startTimeSeconds, endTimeSeconds } = Engine.calculateBusyWindow({
 				orderTimeSeconds,
 				currentTimeSeconds,
-				busyTimeSeconds,
+				busyTimeSeconds: busyTimeSeconds - TIME_FRAME_SECONDS_OFFSET,
 				busyTimeMode: this.busyTimeMode,
 			});
 
