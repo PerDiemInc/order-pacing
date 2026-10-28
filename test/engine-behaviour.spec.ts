@@ -196,8 +196,8 @@ describe("Engine.add busy window placement", () => {
 			return toSeconds(busyTime.endTime) - toSeconds(busyTime.startTime);
 		};
 
-		expect(lengthOf("short")).to.equal(5 * 60);
-		expect(lengthOf("long")).to.equal(45 * 60);
+		expect(lengthOf("short")).to.equal(5 * 60 - 1);
+		expect(lengthOf("long")).to.equal(45 * 60 - 1);
 	});
 
 	it("records the order and current time the window was made for", async () => {

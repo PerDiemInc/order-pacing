@@ -89,7 +89,7 @@ describe("Engine.add", () => {
 		expect(busyTimes[0].ruleId).to.equal("rule-1");
 		expect(busyTimes[0].threshold).to.deep.include({ type: "orders", value: 3, limit: 3 });
 		expect(busyTimes[0].busyTimeContext.totalOrders).to.equal(3);
-		expect(toSeconds(busyTimes[0].endTime) - toSeconds(busyTimes[0].startTime)).to.equal(15 * 60);
+		expect(toSeconds(busyTimes[0].endTime) - toSeconds(busyTimes[0].startTime)).to.equal(15 * 60 - 1);
 	});
 
 	it("does not count orders outside the time window", async () => {
@@ -429,7 +429,7 @@ describe("Engine busy time anchoring", () => {
 		const [busyTime] = await engine.getBusyTimes();
 
 		expect(toSeconds(busyTime.endTime)).to.equal(toSeconds(orderTime));
-		expect(toSeconds(busyTime.endTime) - toSeconds(busyTime.startTime)).to.equal(15 * 60);
+		expect(toSeconds(busyTime.endTime) - toSeconds(busyTime.startTime)).to.equal(15 * 60 - 1);
 	});
 
 	it("ends the busy window busyTimeMinutes from now for near-term orders", async () => {
@@ -441,17 +441,17 @@ describe("Engine busy time anchoring", () => {
 		const [busyTime] = await engine.getBusyTimes();
 
 		expect(toSeconds(busyTime.endTime)).to.be.closeTo(toSeconds(now) + 15 * 60, 2);
-		expect(toSeconds(busyTime.endTime) - toSeconds(busyTime.startTime)).to.equal(15 * 60);
+		expect(toSeconds(busyTime.endTime) - toSeconds(busyTime.startTime)).to.equal(15 * 60 - 1);
 	});
 
 	it("places the busy window around the order by busyTimeMode", async () => {
 		const orderTime = new Date(Date.now() + 60 * MINUTE_MS);
 		const t = toSeconds(orderTime);
 		for (const [busyTimeMode, start, end] of [
-			[TimeframeMode.BEFORE_ONLY, t - 15 * 60, t],
-			[TimeframeMode.AFTER_ONLY, t, t + 15 * 60],
-			[TimeframeMode.CENTERED, t - 450, t + 450],
-			[TimeframeMode.BEFORE_AND_AFTER, t - 15 * 60, t + 15 * 60],
+			[TimeframeMode.BEFORE_ONLY, t - 15 * 60 + 1, t],
+			[TimeframeMode.AFTER_ONLY, t, t + 15 * 60 - 1],
+			[TimeframeMode.CENTERED, t - 449, t + 450],
+			[TimeframeMode.BEFORE_AND_AFTER, t - 15 * 60 + 1, t + 15 * 60 - 1],
 		] as const) {
 			const { engine } = createEngine([baseRule({ maxOrders: 1 })], { busyTimeMode });
 
@@ -488,8 +488,27 @@ describe("Engine busy time anchoring", () => {
 		}
 
 		expect(waits[TimeframeMode.BEFORE_ONLY]).to.equal(0);
-		// Until a second past the booked order's slot: 15 minutes after it, 12 after the request.
-		expect(waits[TimeframeMode.BEFORE_AND_AFTER]).to.equal(12 * 60 + 1);
+		// Until 15 minutes after the booked order: 12 after the request.
+		expect(waits[TimeframeMode.BEFORE_AND_AFTER]).to.equal(12 * 60);
+	});
+
+	it("leaves the slots busyTimeMinutes either side of a booked order free", async () => {
+		const { engine } = createEngine([baseRule({ maxOrders: 1 })], { busyTimeMode: TimeframeMode.BEFORE_AND_AFTER });
+		const orderTime = new Date(Date.now() + 120 * MINUTE_MS);
+		const waitAt = async (offsetSeconds: number) =>
+			(
+				await engine.validateOrderTime({
+					orderTime: new Date(orderTime.getTime() + offsetSeconds * 1000),
+					tags: ["pickup"],
+				})
+			).waitPeriodSeconds;
+
+		await engine.add(makeOrder({ orderTime }));
+
+		expect(await waitAt(-15 * 60)).to.equal(0);
+		expect(await waitAt(-15 * 60 + 1)).to.be.greaterThan(0);
+		expect(await waitAt(15 * 60 - 1)).to.equal(1);
+		expect(await waitAt(15 * 60)).to.equal(0);
 	});
 });
 

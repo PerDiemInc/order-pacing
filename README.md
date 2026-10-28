@@ -79,7 +79,7 @@ Creates a new Engine instance.
   - `TimeframeMode.CENTERED`: half of `busyTimeMinutes` on each side
   - `TimeframeMode.BEFORE_AND_AFTER`: `busyTimeMinutes` on each side, so an order ready a few minutes after a booked one waits too, not just one ready a few minutes before it
 
-  Whatever the mode, the period never ends before `busyTimeMinutes` from now.
+  Whatever the mode, the period never ends before `busyTimeMinutes` from now. It stops a second short of `busyTimeMinutes` from the order, so the time exactly `busyTimeMinutes` before or after a booked order (the next slot on a 5-minute grid with a 5-minute busy time) stays free.
 - `timeZone`: Optional IANA timezone name, e.g. `'America/New_York'` (defaults to `'UTC'`). Used only to evaluate rule `weekDays`/`startTime`/`endTime` against the order time; all timestamps are stored as UTC epoch seconds.
 - `rules`: Optional array of rules (defaults to `[]`). Rules determine when to apply busy time based on order volume in a time window:
   ```typescript
